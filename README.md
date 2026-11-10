@@ -14,6 +14,7 @@
 - **Activity:** timestamped task updates and work-count snapshots.
 - **Appearance:** Follow System, GitHub Light, GitHub Dark, Linear-inspired Dark, Catppuccin Mocha, Nord, and Dracula; saved in your browser.
 - **Local backups:** export JSON, CSV, or a consistent SQLite backup.
+- **Notifications:** a local inbox for mentions, replies, assignments, and review requests; automatic checks every minute, unread badges, and desktop alerts. Optional macOS background checks continue after closing Workdesk.
 - **Reminders:** optional macOS scheduled daily sync and desktop notification (Linux/Windows users can sync manually or schedule the CLI command themselves).
 
 GitHub operations are **read-only**. You can edit your own tasks and local tracking notes; Workdesk will not post comments, edit issues, merge PRs, or change repositories.
@@ -46,6 +47,9 @@ When **Focus organizations** is empty, the app shows work from *all* accessible 
 ```bash
 python3 app.py                   # local web UI
 python3 app.py --port 8799       # custom port
+python3 app.py check-notifications  # one notification check (respects the next allowed poll time)
+python3 app.py install-notifications  # macOS: check even when Workdesk is closed
+python3 app.py remove-notifications   # macOS: remove background checks
 python3 app.py sync              # one-time GitHub sync
 python3 app.py sync --notify     # sync and notify (macOS)
 python3 app.py install-reminder --time 09:00  # macOS only
@@ -53,7 +57,19 @@ python3 app.py remove-reminder   # macOS only
 python3 -m unittest discover -s tests -v
 ```
 
-The macOS scheduled sync runs while you're logged in and the system executes the LaunchAgent. It does not require the browser page to stay open. Other operating systems can use the app and manual sync; automatic notifications and scheduling are currently implemented only for macOS.
+The macOS scheduled sync runs while you're logged in and the system executes the LaunchAgent. It does not require the browser page to stay open. On other operating systems, notification checks run with the Workdesk server; browser desktop alerts require permission and an open Workdesk tab. The daily summary and background scheduling are macOS-only.
+
+## Notifications
+
+Automatic notification checks are enabled by default while the Workdesk server runs. Open **Notifications** to see your inbox, or **Settings & backup → Notifications** to pause checks, change the interval, or disable desktop alerts. The first successful check imports existing unread threads quietly; later new or updated threads trigger an alert. Read status in Workdesk is local and never changes GitHub. Repository filters on the work queue do not hide notifications.
+
+The watcher uses GitHub's participating notifications: mentions (including team mentions), replies in conversations you participate in, assignments, and review requests. “Messages” means GitHub discussion/comment activity reported by this feed, not email, chat, or direct messages. Threads combine multiple updates between checks; the inbox links to the GitHub conversation. Delivery depends on your GitHub notification subscriptions and access. It is polling, not instant push: normally about a minute while awake and online, plus any GitHub delivery delay. GitHub's `X-Poll-Interval` and rate-limit backoff may extend this. Errors appear in Notifications and Settings; checks retry automatically without discarding the last successful checkpoint.
+
+GitHub's [Notifications API](https://docs.github.com/en/rest/activity/notifications) requires a classic token with `notifications` or `repo` scope and does not support fine-grained tokens. If your CLI credentials need the scope, run `gh auth refresh -h github.com -s notifications`. Private organization access may also need SSO authorization. Credentials stay in the environment or GitHub CLI credential store.
+
+On **macOS**, desktop alerts use `osascript`; allow notifications from Script Editor / osascript in System Settings and check Focus settings if alerts do not appear. Select **Enable background checks** to install a per-user LaunchAgent that runs while you are logged in, even after closing the browser and server. It uses `gh auth login` credentials; environment tokens are never saved to its plist. Remove it with **Remove background checks** or `python3 app.py remove-notifications`. The foreground server continues checking until paused in notification settings.
+
+On **Linux and Windows**, select **Allow browser alerts** and leave the tab open for desktop notifications (browser support varies). The local inbox works without browser notification permission. All platforms retain unread threads and deduplicate updates across restarts. Only the newest 200 threads are displayed at once, unread first; marking displayed threads read reveals older unread threads.
 
 ## Data and privacy
 

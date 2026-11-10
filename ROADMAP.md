@@ -18,6 +18,8 @@ This document tracks ideas rather than promises. Proposals and pull requests are
 
 ## GitHub signals
 
+- [x] Personal notification inbox, automatic polling, desktop alerts, and optional macOS background checks
+
 - [ ] Flag Changes Requested, failing CI checks, unresolved review threads, and stale PRs
 - [ ] Distinguish submitted reviews from withdrawn review requests
 - [ ] Improve rate-limit handling and incremental synchronization
@@ -25,7 +27,7 @@ This document tracks ideas rather than promises. Proposals and pull requests are
 
 ## Portability
 
-- [ ] Cross-platform scheduling and desktop notifications (currently macOS only)
+- [ ] Cross-platform background scheduling and native desktop notifications (browser alerts available; background scheduler is macOS only)
 - [ ] Guided database backup restoration and retention controls
 - [ ] Optional authenticated, encrypted multi-device synchronization
 - [ ] Reproducible release artifacts and installers

@@ -21,6 +21,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Check Python syntax
-        run: python -m compileall -q app.py tests
+        run: python -m compileall -q app.py notifications.py tests
       - name: Unit tests
         run: python -m unittest discover -s tests -v

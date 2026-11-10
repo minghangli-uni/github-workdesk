@@ -28,12 +28,14 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 import uuid
 import webbrowser
+import notifications
 
 APP_NAME = 'GitHub Workdesk'
 ROOT = Path(__file__).resolve().parent
 DEFAULT_USERNAME = ''  # Empty: use authenticated GitHub account automatically
 DEFAULT_ORGS = []  # Optional filter; empty means include all repositories
 AGENT_LABEL = 'local.github-workdesk.daily-sync'
+WATCHER_LABEL = 'local.github-workdesk.notifications'
 SYNC_LOCK = threading.Lock()
 SYNC_STATE = {'running': False, 'started_at': None, 'finished_at': None, 'error': None, 'message': None}
 
@@ -135,6 +137,7 @@ def init_db():
           completed INTEGER NOT NULL
         );
         ''')
+        notifications.init_db(con)
         for key, value in {
             'github_username': DEFAULT_USERNAME,
             'focus_orgs': DEFAULT_ORGS,
@@ -164,6 +167,9 @@ def github_token():
     if proc.returncode or not proc.stdout.strip():
         raise RuntimeError('GitHub authentication is missing. Run: gh auth login')
     return proc.stdout.strip()
+
+
+NOTIFICATIONS = notifications.Monitor(db_conn, github_token)
 
 
 class GitHubClient:
@@ -493,6 +499,51 @@ def reminder_info():
         return {'installed': True, 'time': '09:00'}
 
 
+def watcher_path():
+    return Path.home() / 'Library' / 'LaunchAgents' / f'{WATCHER_LABEL}.plist'
+
+
+def install_watcher():
+    if sys.platform != 'darwin':
+        raise RuntimeError('Background notification scheduling is currently macOS only.')
+    import plistlib
+    target = watcher_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    folder = default_data_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    config = {
+        'Label': WATCHER_LABEL,
+        'ProgramArguments': [sys.executable, str(ROOT / 'app.py'), 'check-notifications'],
+        'StartInterval': 60, 'RunAtLoad': True,
+        'WorkingDirectory': str(ROOT),
+        'StandardOutPath': str(folder / 'notifications.log'),
+        'StandardErrorPath': str(folder / 'notifications-error.log'),
+        # Never save bearer tokens in the plist. The job uses gh's credential store.
+        'EnvironmentVariables': {'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
+                                 'WORKDESK_DATA_DIR': str(folder)},
+    }
+    with target.open('wb') as fp:
+        plistlib.dump(config, fp)
+    target.chmod(0o600)
+    domain = f'gui/{os.getuid()}'
+    subprocess.run(['launchctl', 'bootout', domain, str(target)], capture_output=True, timeout=15)
+    proc = subprocess.run(['launchctl', 'bootstrap', domain, str(target)], capture_output=True, text=True, timeout=15)
+    if proc.returncode:
+        target.unlink(missing_ok=True)
+        raise RuntimeError(f'Could not load background notifications: {proc.stderr.strip()}')
+    with db_conn() as con:
+        con.execute("UPDATE settings SET value='true' WHERE key='notifications_enabled'")
+
+
+def remove_watcher():
+    if sys.platform != 'darwin':
+        raise RuntimeError('Background notification scheduling is currently macOS only.')
+    target = watcher_path()
+    if target.exists():
+        subprocess.run(['launchctl', 'bootout', f'gui/{os.getuid()}', str(target)], capture_output=True, timeout=15)
+        target.unlink()
+
+
 def validate_http_url(value):
     if not value:
         return ''
@@ -611,7 +662,8 @@ def dashboard(filters):
         return {'tasks': data, 'events': events, 'runs': runs, 'snapshots': snapshots,
                 'repositories': repo_values, 'settings': settings, 'sync': SYNC_STATE.copy(),
                 'summary': summary_counts(con), 'reminder': reminder_info(),
-                'data_dir': str(default_data_dir()), 'platform': sys.platform}
+                'data_dir': str(default_data_dir()), 'platform': sys.platform,
+                'notification_watcher': watcher_path().exists()}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -625,7 +677,7 @@ class Handler(BaseHTTPRequestHandler):
         return host in ('127.0.0.1', 'localhost', '::1')
 
     def log_message(self, fmt, *args):
-        if not self.path.startswith('/api/dashboard'):
+        if not self.path.startswith(('/api/dashboard', '/api/notifications')):
             super().log_message(fmt, *args)
 
     def send_json(self, data, code=200):
@@ -677,12 +729,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(204); self.end_headers(); return
             if uri.path == '/api/dashboard':
                 return self.send_json(dashboard(parse_qs(uri.query)))
+            if uri.path == '/api/notifications':
+                return self.send_json(NOTIFICATIONS.snapshot())
             if uri.path == '/api/health':
                 return self.send_json({'ok': True, 'timestamp': utcnow()})
             if uri.path == '/api/export':
                 with db_conn() as con:
                     data = {name: [dict(r) for r in con.execute(f'SELECT * FROM {name}')]
-                            for name in ('tasks', 'events', 'sync_runs', 'snapshots', 'settings')}
+                            for name in ('tasks', 'events', 'sync_runs', 'snapshots', 'settings', 'notifications', 'notification_accounts', 'notification_monitor')}
                 data['exported_at'] = utcnow()
                 return self.send_binary(json.dumps(data, ensure_ascii=False, indent=2).encode(),
                                         'workdesk-export.json', 'application/json')
@@ -731,10 +785,31 @@ class Handler(BaseHTTPRequestHandler):
                         print('GitHub sync failed:', exc, file=sys.stderr)
                 threading.Thread(target=work, daemon=True).start()
                 return self.send_json({'started': True}, 202)
+            if uri.path == '/api/notifications/read':
+                NOTIFICATIONS.mark_read(p)
+                return self.send_json({'ok': True})
+            if uri.path == '/api/notification-watcher':
+                if p.get('action') == 'install':
+                    install_watcher()
+                elif p.get('action') == 'remove':
+                    remove_watcher()
+                else:
+                    raise ValueError('Unknown watcher action')
+                return self.send_json({'installed': watcher_path().exists()})
             if uri.path == '/api/tasks':
                 return self.send_json(save_manual(p), 201)
             if uri.path == '/api/settings':
                 with db_conn() as con:
+                    for key in ('notifications_enabled', 'desktop_notifications'):
+                        if key in p:
+                            if not isinstance(p[key], bool):
+                                raise ValueError(f'{key} must be true or false')
+                            con.execute('UPDATE settings SET value=? WHERE key=?', (json.dumps(p[key]), key))
+                    if 'notification_interval' in p:
+                        interval = p['notification_interval']
+                        if type(interval) is not int or not 60 <= interval <= 3600:
+                            raise ValueError('Notification interval must be 60–3600 seconds')
+                        con.execute('UPDATE settings SET value=? WHERE key=?', (json.dumps(interval), 'notification_interval'))
                     if 'github_username' in p:
                         name = str(p['github_username']).strip()
                         if name and not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?', name):
@@ -794,13 +869,25 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     ap = argparse.ArgumentParser(description=APP_NAME)
-    ap.add_argument('command', nargs='?', default='serve', choices=['serve', 'sync', 'install-reminder', 'remove-reminder'])
+    ap.add_argument('command', nargs='?', default='serve', choices=['serve', 'sync', 'install-reminder', 'remove-reminder', 'check-notifications', 'install-notifications', 'remove-notifications'])
     ap.add_argument('--port', type=int, default=8765)
     ap.add_argument('--time', default='09:00')
     ap.add_argument('--notify', action='store_true')
     ap.add_argument('--no-browser', action='store_true')
     args = ap.parse_args()
     init_db()
+    if args.command == 'check-notifications':
+        result = NOTIFICATIONS.poll()
+        print(json.dumps(result))
+        return 1 if result['status'] == 'error' else 0
+    if args.command == 'install-notifications':
+        install_watcher()
+        print('Background GitHub notifications enabled (macOS, while logged in).')
+        return 0
+    if args.command == 'remove-notifications':
+        remove_watcher()
+        print('Background GitHub notification watcher removed.')
+        return 0
     if args.command == 'sync':
         try:
             result = sync_github()
@@ -823,6 +910,7 @@ def main():
     httpd = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
     url = f'http://127.0.0.1:{args.port}'
     print(f'\n  GitHub Workdesk  {url}\n  Database: {default_data_dir() / "workdesk.sqlite3"}\n  Ctrl+C to stop\n', flush=True)
+    threading.Thread(target=NOTIFICATIONS.run, daemon=True).start()
     if not args.no_browser:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()
     try:
@@ -830,6 +918,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        NOTIFICATIONS.stop.set()
         httpd.server_close()
     return 0
 

@@ -132,3 +132,16 @@ html[data-theme] :is(.nav-item,.button,.icon-button,.text-button,.row-action,sel
 .theme-swatches span:nth-child(3){background:var(--accent)}
 .theme-swatches span:nth-child(4){background:var(--accent2)}
 @media(prefers-reduced-motion:reduce) {html,body{scroll-behavior:auto!important}.button,.stat-card{transition:none!important}}
+
+/* Notification inbox uses the active theme's colours. */
+#notifications-panel{padding:25px}
+.notification-item{display:flex;align-items:center;gap:18px;padding:18px 12px;border-bottom:1px solid var(--border);border-left:3px solid transparent}
+.notification-item.unread{border-left-color:var(--accent);background:var(--nav-active-bg)}
+.notification-content{flex:1;min-width:0;overflow-wrap:anywhere}
+.notification-content>a{color:var(--text);font-size:14px;font-weight:650;line-height:1.6}
+.notification-content>a:hover{text-decoration:underline;color:var(--accent)}
+.notification-reason{color:var(--sub);font-size:11px;margin-bottom:5px}
+.notification-error{outline:1px solid var(--amber)}
+.settings-card label.checkbox-label{flex-direction:row;align-items:center}
+.settings-card .checkbox-label input{accent-color:var(--accent);width:16px;height:16px}
+@media(max-width:700px){#notifications-panel{padding:16px}.notification-item{align-items:flex-start;flex-wrap:wrap}.notification-content{flex-basis:70%}#notifications-panel .panel-title-row{flex-wrap:wrap;gap:12px}}
