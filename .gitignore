@@ -1,0 +1,45 @@
+# Local credentials, secrets and environment
+.env
+.env.*
+!.env.example
+*token*.txt
+*.pem
+*.key
+
+# Application state and backups (must never be committed)
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-*
+/backups/
+/backup/
+/data/
+/exports/
+/workdesk-*.json
+/workdesk-*.csv
+/workdesk-*.sqlite3
+
+# Python and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# macOS / editors / logs
+.DS_Store
+.AppleDouble
+*.log
+.idea/
+.vscode/
+*.swp
+*.swo
+local.github-workdesk.daily-sync.plist
