@@ -29,6 +29,7 @@ from urllib.error import HTTPError, URLError
 import uuid
 import webbrowser
 import notifications
+import contributions
 
 APP_NAME = 'GitHub Workdesk'
 ROOT = Path(__file__).resolve().parent
@@ -138,6 +139,7 @@ def init_db():
         );
         ''')
         notifications.init_db(con)
+        contributions.init_db(con)
         for key, value in {
             'github_username': DEFAULT_USERNAME,
             'focus_orgs': DEFAULT_ORGS,
@@ -340,7 +342,8 @@ def sync_github(client=None):
             run_id = cur.lastrowid
         since = (date.today() - timedelta(days=int(opts['lookback_days']))).isoformat()
         client = client or GitHubClient(github_token())
-        actual_user = str(client.get('/user').get('login', '')).strip()
+        profile = client.get('/user')
+        actual_user = str(profile.get('login', '')).strip()
         if not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?', actual_user):
             raise RuntimeError('Could not determine the authenticated GitHub account.')
         # Users can optionally pin an account, otherwise Workdesk follows gh auth login.
@@ -389,6 +392,9 @@ def sync_github(client=None):
                     review_complete = False
                 if role == 'assigned':
                     assigned_complete = False
+        SYNC_STATE['message'] = 'Finding your contributions and checking commit evidence'
+        contribution_errors = contributions.sync(db_conn, client, profile, opts, since)
+        errors.extend('Contributions: ' + error for error in contribution_errors)
         with db_conn() as con:
             old = con.execute("SELECT * FROM tasks WHERE source='github' AND (role_review=1 OR role_assigned=1)").fetchall()
             for task in old:
@@ -663,7 +669,7 @@ def dashboard(filters):
                 'repositories': repo_values, 'settings': settings, 'sync': SYNC_STATE.copy(),
                 'summary': summary_counts(con), 'reminder': reminder_info(),
                 'data_dir': str(default_data_dir()), 'platform': sys.platform,
-                'notification_watcher': watcher_path().exists()}
+                'notification_watcher': watcher_path().exists(), 'contributions': contributions.snapshot(con)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -721,6 +727,8 @@ class Handler(BaseHTTPRequestHandler):
             uri = urlparse(self.path)
             if uri.path == '/':
                 return self.serve_static('index.html', 'text/html; charset=utf-8')
+            if uri.path == '/static/contributions.js':
+                return self.serve_static('contributions.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/app.js':
                 return self.serve_static('app.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/styles.css':
@@ -736,7 +744,7 @@ class Handler(BaseHTTPRequestHandler):
             if uri.path == '/api/export':
                 with db_conn() as con:
                     data = {name: [dict(r) for r in con.execute(f'SELECT * FROM {name}')]
-                            for name in ('tasks', 'events', 'sync_runs', 'snapshots', 'settings', 'notifications', 'notification_accounts', 'notification_monitor')}
+                            for name in ('tasks', 'events', 'sync_runs', 'snapshots', 'settings', 'notifications', 'notification_accounts', 'notification_monitor', 'contributions', 'contribution_sync')}
                 data['exported_at'] = utcnow()
                 return self.send_binary(json.dumps(data, ensure_ascii=False, indent=2).encode(),
                                         'workdesk-export.json', 'application/json')
@@ -785,6 +793,10 @@ class Handler(BaseHTTPRequestHandler):
                         print('GitHub sync failed:', exc, file=sys.stderr)
                 threading.Thread(target=work, daemon=True).start()
                 return self.send_json({'started': True}, 202)
+            if uri.path == '/api/contributions':
+                with db_conn() as con:
+                    contributions.update(con, p)
+                return self.send_json({'ok': True})
             if uri.path == '/api/notifications/read':
                 NOTIFICATIONS.mark_read(p)
                 return self.send_json({'ok': True})
@@ -800,6 +812,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(save_manual(p), 201)
             if uri.path == '/api/settings':
                 with db_conn() as con:
+                    for key, value in contributions.validate_settings(p).items():
+                        con.execute('UPDATE settings SET value=? WHERE key=?', (json.dumps(value), key))
                     for key in ('notifications_enabled', 'desktop_notifications'):
                         if key in p:
                             if not isinstance(p[key], bool):

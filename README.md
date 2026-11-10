@@ -7,6 +7,7 @@
 ## What it does
 
 - **PR tracking:** authored open and draft PRs, and recently closed or merged PRs.
+- **My contributions:** active and historical PRs, authored/co-authored commits, submitted reviews, contribution evidence, private notes, and followed PR updates.
 - **Review queue:** requests for your review; removed requests are not automatically assumed to have been reviewed.
 - **Issues:** assigned issues and issues you created.
 - **Personal tasks:** title, priority, due date, notes, links, completion status and history, independent of GitHub.
@@ -55,9 +56,22 @@ python3 app.py sync --notify     # sync and notify (macOS)
 python3 app.py install-reminder --time 09:00  # macOS only
 python3 app.py remove-reminder   # macOS only
 python3 -m unittest discover -s tests -v
+node --test tests/test_contributions_ui.js  # contributor UI tests; Node 18+
 ```
 
 The macOS scheduled sync runs while you're logged in and the system executes the LaunchAgent. It does not require the browser page to stay open. On other operating systems, notification checks run with the Workdesk server; browser desktop alerts require permission and an open Workdesk tab. The daily summary and background scheduling are macOS-only.
+
+## My contributions
+
+Open **My contributions** after **Sync GitHub**. **Active** shows open PRs you helped with; **History** contains merged/closed PRs and standalone commits. Filter by repository, role or your contribution date; sort by the latest PR activity or your own latest contribution. Discussion-only participation is optional. A review request alone does not count as a submitted review.
+
+Expand **Your contribution** to see the exact commit/review links behind each badge and add private notes. **PR author**, **Code contributor**, **Co-author**, **Committer** and **Reviewer** describe distinct kinds of involvement. Co-author credits match email addresses in trailing `Co-authored-by` metadata; names alone are not used. Previously recorded evidence is retained and labelled if later removed by a force-push or review deletion. “Reviewed” reflects a current-head approval, not a guarantee that all merge requirements are satisfied.
+
+Discovery combines authored/reviewed/commented PR searches, default-branch commit searches and commit-to-PR associations. Because [GitHub commit search only covers default branches](https://docs.github.com/en/search-github/searching-on-github/searching-commits), Workdesk also scans open PRs in discovered repositories. **Settings → Contribution discovery** accepts extra `owner/repository` entries for shared work elsewhere, plus your older/alternate commit emails. Verified GitHub emails are used when existing credentials permit access; no additional permission is requested automatically. The configured history window controls initial historical discovery; saved evidence remains available afterward.
+
+A sync checks up to 30 repositories for open PRs, 200 candidate PRs and 500 API requests; explicit extra repositories are prioritised. Commit-to-PR association checks are limited to 100 commits or a smaller available request budget. Search results, API errors and GitHub's 250-commit PR endpoint limit may leave gaps. **Discovery coverage** reports incomplete scans; previously saved work and private notes are preserved. The section is a record of discovered contributions, not an exhaustive GitHub contribution audit.
+
+**Follow updates** tracks a PR through the notification watcher even when GitHub does not send you a participating thread. It checks the PR's latest activity timestamp while automatic notification checks run, and sends updates to the same local inbox and desktop alert system. Up to 50 PRs can be followed. It does not subscribe you on GitHub. Notes, follow preferences, evidence and discovery state are included in local JSON/SQLite backups and separated by GitHub account.
 
 ## Notifications
 

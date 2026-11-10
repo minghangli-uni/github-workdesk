@@ -18,6 +18,8 @@ This document tracks ideas rather than promises. Proposals and pull requests are
 
 ## GitHub signals
 
+- [x] Active/history contribution view with authorship, co-author credits, reviews, evidence, private notes and followed PR alerts
+
 - [x] Personal notification inbox, automatic polling, desktop alerts, and optional macOS background checks
 
 - [ ] Flag Changes Requested, failing CI checks, unresolved review threads, and stale PRs

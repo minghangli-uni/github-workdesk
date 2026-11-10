@@ -12,6 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import re
+import contributions
 
 
 def now():
@@ -199,7 +200,21 @@ class Monitor:
             raw, headers = client.fetch(account)
             # GitHub server time avoids skipping events when the local clock is ahead.
             watermark = stamp(parsedate_to_datetime(headers['Date'])) if headers.get('Date') else stamp(started)
+            followed, follow_errors, follow_delay, followed_routes = contributions.followed_updates(self.db_conn, client, username)
             items = [normalize(item) for item in raw] if raw is not None else []
+            items.extend(normalize(item) for _, _, item in followed)
+            # Both sources use one identity for a followed conversation, even if
+            # GitHub's notification thread arrives in a later polling cycle.
+            combined = {}
+            for item in items:
+                if item['url'] in followed_routes:
+                    item['thread_id'] = followed_routes[item['url']]
+                    item['reason'] = 'contribution'
+                    item['revision'] = hashlib.sha256(json.dumps([item['updated_at'], item['title']]).encode()).hexdigest()
+                old = combined.get(item['thread_id'])
+                if old is None or item['updated_at'] > old['updated_at']:
+                    combined[item['thread_id']] = item
+            items = list(combined.values())
             alerts = []
             with self.db_conn() as con:
                 con.execute('BEGIN IMMEDIATE')
@@ -217,12 +232,16 @@ class Monitor:
                         (username,thread_id,title,repo,kind,reason,url,updated_at,revision,unread,alert_seq)
                         VALUES (:username,:thread_id,:title,:repo,:kind,:reason,:url,:updated_at,:revision,:unread,:alert_seq)''',
                         {**item, 'username': username, 'alert_seq': seq if account else 0})
+                for item_id, updated, _ in followed:
+                    con.execute('UPDATE contributions SET follow_updated_at=? WHERE username=? AND id=? AND followed=1',
+                                (updated, username, item_id))
                 if raw is not None:
                     # The baseline query differs from incremental queries: do not reuse its validator.
                     con.execute('INSERT OR REPLACE INTO notification_accounts VALUES (?,?,?)',
                                 (username, watermark, headers.get('Last-Modified') if account else None))
-                con.execute('''UPDATE notification_monitor SET username=?,checked_at=?,next_check=?,error=NULL,failures=0 WHERE id=1''',
-                            (username, stamp(now()), stamp(now() + timedelta(seconds=max(opts['notification_interval'], client.interval)))))
+                con.execute('''UPDATE notification_monitor SET username=?,checked_at=?,next_check=?,error=?,failures=0 WHERE id=1''',
+                            (username, stamp(now()), stamp(now() + timedelta(seconds=max(opts['notification_interval'], client.interval, follow_delay))),
+                             '; '.join(follow_errors) if follow_errors else None))
                 current_opts = self.settings(con)
             if current_opts['notifications_enabled'] and current_opts['desktop_notifications']:
                 desktop_alert(alerts)
