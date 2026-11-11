@@ -1,4 +1,10 @@
-# Workdesk on your Mac and iPhone
+# Optional hosting — not needed for local saving
+
+Hosting is set aside for now. The default local app saves data on your computer;
+use [the local saving guide](README.md#saving-everything-locally). The following
+setup is retained only for a future decision to enable hosting.
+
+## Workdesk on your Mac and iPhone
 
 Hosted mode runs the existing Python sync engine on an always-on server. Open the
 same HTTPS address on your Mac and iPhone to share tasks, private notes,

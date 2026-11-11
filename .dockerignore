@@ -5,6 +5,7 @@
 !notifications.py
 !contributions.py
 !sync_diagnostics.py
+!local_backups.py
 !cloud.py
 !cloud_identity.py
 !cloud_push.py

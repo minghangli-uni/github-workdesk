@@ -22,6 +22,10 @@
 /workdesk-*.json
 /workdesk-*.csv
 /workdesk-*.sqlite3
+backup-status.json
+backup.lock
+.backup-status-*
+.workdesk-backup-*.partial*
 
 # Python and test artifacts
 __pycache__/

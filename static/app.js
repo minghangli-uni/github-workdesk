@@ -1,6 +1,6 @@
 'use strict';
 
-// Per-browser appearance preference. No identity or personal details are committed.
+// Cache appearance for first paint; the database stores the saved preference.
 const AVAILABLE_THEMES = new Set(['system', 'github-light', 'github-dark', 'linear-dark', 'catppuccin-mocha', 'nord', 'dracula']);
 let notificationData = null;
 let notificationRequestRunning = false;
@@ -43,7 +43,7 @@ async function request(path,opts={}){const r=await fetch(path,{...opts,headers:{
 function toast(message,error=false){const node=document.createElement('div');node.className='toast'+(error?' error':'');node.textContent=message;$('toast-stack').appendChild(node);setTimeout(()=>node.remove(),4700)}
 function banner(html,tone='warning'){$('banner').innerHTML=html;$('banner').className='banner banner-'+tone}
 function clearBanner(){$('banner').classList.add('hidden')}
-async function refresh(silent=false){try{state.data=await request('/api/dashboard');render();if(!silent&&!state.data.sync.running)toast('Workspace refreshed');}catch(e){banner(`<strong>Cannot load your workspace.</strong> ${esc(e.message)}`)}}
+async function refresh(silent=false){try{state.data=await request('/api/dashboard');await restoreAppearance(state.data);render();if(!silent&&!state.data.sync.running)toast('Workspace refreshed');}catch(e){banner(`<strong>Cannot load your workspace.</strong> ${esc(e.message)}`)}}
 
 function render(){if(!state.data)return;const data=state.data, c=counts();
   $('stat-reviews').textContent=c.reviews;$('stat-prs').textContent=c.prs;$('stat-issues').textContent=c.issues;$('stat-manual').textContent=c.manual;$('stat-completed').textContent=c.completed;
@@ -151,7 +151,7 @@ $('settings-username').value=data.settings.github_username;$('settings-orgs').va
   $('reminder-time').value=data.reminder.time;$('reminder-status').textContent=data.reminder.installed?'Enabled: every day at '+data.reminder.time+' (local time)':'Not enabled. The webpage still supports manual sync.';
   $('reminder-install').disabled=data.platform!=='darwin';$('reminder-remove').disabled=data.platform!=='darwin'||!data.reminder.installed;
   $('database-path').textContent=data.data_dir+'/workdesk.sqlite3';$('theme-select').value=selectedTheme;$('auth-hint').textContent='GitHub account: '+(data.settings.github_username || (data.settings.last_synced_user ? data.settings.last_synced_user+' (auto-detected)' : 'auto-detect on sync'))+' · If authentication fails, run “gh auth login” in Terminal.';
-  renderMobile();
+  renderLocalData(data);renderMobile();
 }
 function switchView(view){state.view=view;state.limit=30;render();window.scrollTo({top:0,behavior:'smooth'})}
 
@@ -223,7 +223,7 @@ async function notificationWatcher(action){
   catch(e){toast(e.message,true)}
 }
 
-function bind(){bindMobile();bindContributions();document.querySelectorAll('.nav-item[data-view]').forEach(e=>e.onclick=()=>switchView(e.dataset.view));document.querySelectorAll('[data-jump]').forEach(e=>e.onclick=()=>switchView(e.dataset.jump));$('sync-btn').onclick=startSync;$('refresh-btn').onclick=()=>refresh();$('new-task-btn').onclick=()=>openTask();$('empty-new').onclick=()=>openTask();$('show-reviews').onclick=()=>switchView('reviews');$('show-more-btn').onclick=()=>{state.limit+=30;renderTable()};$('export-csv').onclick=()=>{window.location.href='/api/export.csv'};
+function bind(){bindLocalData();bindMobile();bindContributions();document.querySelectorAll('.nav-item[data-view]').forEach(e=>e.onclick=()=>switchView(e.dataset.view));document.querySelectorAll('[data-jump]').forEach(e=>e.onclick=()=>switchView(e.dataset.jump));$('sync-btn').onclick=startSync;$('refresh-btn').onclick=()=>refresh();$('new-task-btn').onclick=()=>openTask();$('empty-new').onclick=()=>openTask();$('show-reviews').onclick=()=>switchView('reviews');$('show-more-btn').onclick=()=>{state.limit+=30;renderTable()};$('export-csv').onclick=()=>{window.location.href='/api/export.csv'};
   $('modal-close').onclick=closeTask;$('task-cancel').onclick=closeTask;$('modal-backdrop').onclick=e=>{if(e.target===$('modal-backdrop'))closeTask()};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('modal-backdrop').classList.contains('hidden'))closeTask()});$('task-form').onsubmit=submitTask;
   $('task-delete').onclick=async()=>{const task=state.editing;if(!task||task.source!=='manual')return;if(!confirm('Delete this manual task? This cannot be undone.'))return;try{await request('/api/tasks/'+encodeURIComponent(task.id),{method:'DELETE',body:'{}'});closeTask();await refresh(true);toast('Task deleted')}catch(err){toast(err.message,true)}};
   $('search-input').oninput=e=>{state.filter.query=e.target.value;state.limit=30;renderTable()};
@@ -239,7 +239,7 @@ function bind(){bindMobile();bindContributions();document.querySelectorAll('.nav
   $('notification-browser-permission').onclick=allowBrowserNotifications;
   $('notification-background-install').onclick=()=>notificationWatcher('install');
   $('notification-background-remove').onclick=()=>notificationWatcher('remove');
-  $('theme-select').onchange=e=>applyTheme(e.target.value);$('settings-form').onsubmit=saveSettings;$('reminder-install').onclick=()=>reminder('install');$('reminder-remove').onclick=()=>reminder('remove');
+  $('theme-select').onchange=e=>saveAppearance(e.target.value);$('settings-form').onsubmit=saveSettings;$('reminder-install').onclick=()=>reminder('install');$('reminder-remove').onclick=()=>reminder('remove');
 }
 
 const initialView=new URLSearchParams(window.location.search).get('view');

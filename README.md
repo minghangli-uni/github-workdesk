@@ -1,10 +1,5 @@
 # GitHub Workdesk
 
-**Mac + iPhone:** an optional hosted mode adds owner-only GitHub sign-in, shared
-tasks and notes, an installable Home Screen app, and Web Push alerts while your Mac
-is off. See [HOSTING.md](HOSTING.md) for the prepared Render deployment, costs,
-setup and import instructions. Local mode remains available without dependencies.
-
 **A local-first, open-source dashboard for managing your GitHub pull requests, requested reviews, issues, and personal to-dos.** Runs in your browser; your notes and synced metadata stay on your own machine. No hosted Workdesk account, Python dependencies, or server subscription required.
 
 ![GitHub Workdesk demo with fictional data](docs/dashboard-demo.png)
@@ -18,8 +13,8 @@ setup and import instructions. Local mode remains available without dependencies
 - **Personal tasks:** title, priority, due date, notes, links, completion status and history, independent of GitHub.
 - **Filters:** repository, text, time range, completion state and role.
 - **Activity:** timestamped task updates and work-count snapshots.
-- **Appearance:** Follow System, GitHub Light, GitHub Dark, Linear-inspired Dark, Catppuccin Mocha, Nord, and Dracula; saved in your browser.
-- **Local backups:** export JSON, CSV, or a consistent SQLite backup.
+- **Appearance:** Follow System, GitHub Light, GitHub Dark, Linear-inspired Dark, Catppuccin Mocha, Nord, and Dracula; saved in your local database and included in backups.
+- **Local backups:** daily automatic snapshots, a “Save backup on this Mac” button, and JSON/CSV/SQLite downloads.
 - **Notifications:** a local inbox for mentions, replies, assignments, and review requests; automatic checks every minute, unread badges, and desktop alerts. Optional macOS background checks continue after closing Workdesk.
 - **Reminders:** optional macOS scheduled daily sync and desktop notification (Linux/Windows users can sync manually or schedule the CLI command themselves).
 
@@ -56,6 +51,7 @@ python3 app.py --port 8799       # custom port
 python3 app.py check-notifications  # one notification check (respects the next allowed poll time)
 python3 app.py install-notifications  # macOS: check even when Workdesk is closed
 python3 app.py remove-notifications   # macOS: remove background checks
+python3 app.py backup            # save a complete backup in your local data folder
 python3 app.py sync              # one-time GitHub sync
 python3 app.py sync --notify     # sync and notify (macOS)
 python3 app.py install-reminder --time 09:00  # macOS only
@@ -89,6 +85,50 @@ GitHub's [Notifications API](https://docs.github.com/en/rest/activity/notificati
 On **macOS**, desktop alerts use `osascript`; allow notifications from Script Editor / osascript in System Settings and check Focus settings if alerts do not appear. Select **Enable background checks** to install a per-user LaunchAgent that runs while you are logged in, even after closing the browser and server. It uses `gh auth login` credentials; environment tokens are never saved to its plist. Remove it with **Remove background checks** or `python3 app.py remove-notifications`. The foreground server continues checking until paused in notification settings.
 
 On **Linux and Windows**, select **Allow browser alerts** and leave the tab open for desktop notifications (browser support varies). The local inbox works without browser notification permission. All platforms retain unread threads and deduplicate updates across restarts. Only the newest 200 threads are displayed at once, unread first; marking displayed threads read reveals older unread threads.
+
+## Saving everything locally
+
+Local mode is the default. No Render account, hosting setup or subscription is needed.
+Run `python3 app.py` or double-click `start.command`.
+
+Every successful task/note/settings save, notification update and GitHub sync writes
+to your local SQLite database. Saved records remain when you close the browser,
+restart Workdesk, or restart your computer. This includes the GitHub records
+Workdesk has discovered, manual tasks, priorities, due dates, bookmarks, snoozes,
+notes, contribution evidence/follow preferences, notification history/read status,
+sync reports, activity history and appearance/discovery/notification settings.
+Choose **Save** for forms; unfinished edits are not committed automatically.
+An existing browser theme is migrated into the database on first load.
+
+**Settings & backup → Saved on this Mac** shows the actual database path, the latest
+backup and its folder. **Save backup on this Mac** creates a consistent copy of the
+whole database directly under `backups/` in the data folder. **Open data folder**
+reveals it in Finder. JSON, CSV and SQLite downloads are still available; CSV is a
+task list, while SQLite contains the whole saved workspace.
+
+Automatic backups are enabled in local mode. A backup is made at startup if no
+automatic copy exists from the last 24 hours; checks continue every 10 minutes
+while the local server runs. CLI sync and background notification checks also
+check whether a daily backup is due. No backup job runs while the Mac is asleep
+or off; it catches up when Workdesk next runs. Keep the latest seven automatic
+copies; manual copies are never pruned. A backup failure is shown in Settings
+and does not block ordinary saves or sync.
+
+Backups contain Workdesk data, not GitHub credentials, repository clones, or
+unsaved form edits. GitHub authentication remains in your local CLI credential
+store or environment. These backups are on the same computer; copy an export
+to your normal backup storage if you need protection from loss of the device.
+
+To restore a SQLite backup, stop Workdesk and its scheduled checks, keep a copy of
+the existing data folder, and use the backup as `workdesk.sqlite3` in a **new** data
+folder. Start with `WORKDESK_DATA_DIR=/absolute/path/to/new-folder python3 app.py`.
+Using a new folder avoids mixing an old database with leftover SQLite WAL files.
+Re-enable scheduled checks for that data folder if needed. The original data stays
+available until you choose to remove it.
+
+Optional hosted code is retained separately for future use; it is not started by
+local mode and no deployment is required. See [HOSTING.md](HOSTING.md) only if you
+later choose to revisit hosting.
 
 ## Data and privacy
 

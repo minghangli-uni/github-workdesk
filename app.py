@@ -31,6 +31,7 @@ import webbrowser
 import notifications
 import contributions
 import sync_diagnostics
+import local_backups
 
 APP_NAME = 'GitHub Workdesk'
 ROOT = Path(__file__).resolve().parent
@@ -39,6 +40,7 @@ DEFAULT_ORGS = []  # Optional filter; empty means include all repositories
 AGENT_LABEL = 'local.github-workdesk.daily-sync'
 WATCHER_LABEL = 'local.github-workdesk.notifications'
 SYNC_LOCK = threading.Lock()
+THEMES = {'system', 'github-light', 'github-dark', 'linear-dark', 'catppuccin-mocha', 'nord', 'dracula'}
 HOSTED_TOKEN_PROVIDER = None  # Set only by the authenticated cloud entry point.
 SYNC_STATE = {'running': False, 'started_at': None, 'finished_at': None, 'error': None, 'message': None, 'warnings': []}
 
@@ -148,6 +150,7 @@ def init_db():
             'focus_orgs': DEFAULT_ORGS,
             'lookback_days': 365,
             'theme': 'system',
+            'theme_configured': False,
         }.items():
             con.execute('INSERT OR IGNORE INTO settings (key,value) VALUES (?,?)', (key, json.dumps(value)))
 
@@ -177,6 +180,7 @@ def github_token():
 
 
 NOTIFICATIONS = notifications.Monitor(db_conn, github_token)
+BACKUPS = local_backups.Backups(db_conn, default_data_dir)
 
 
 class GitHubAPIError(RuntimeError):
@@ -682,10 +686,12 @@ def dashboard(filters):
                 'repositories': repo_values, 'settings': settings, 'sync': SYNC_STATE.copy(),
                 'summary': summary_counts(con), 'reminder': reminder_info(),
                 'data_dir': str(default_data_dir()), 'platform': sys.platform,
-                'notification_watcher': watcher_path().exists(), 'contributions': contributions.snapshot(con)}
+                'notification_watcher': watcher_path().exists(), 'contributions': contributions.snapshot(con),
+                'storage': BACKUPS.info() if HOSTED_TOKEN_PROVIDER is None else None}
 
 
 class WorkdeskAPI:
+    local_storage = False
     server_version = 'GitHub-Workdesk/1.0'
 
     def allowed_host(self):
@@ -731,7 +737,7 @@ class WorkdeskAPI:
 
     def handle_error(self, exc):
         status = 404 if isinstance(exc, KeyError) else 400 if isinstance(exc, (ValueError, TypeError)) else 500
-        self.send_json({'error': str(exc)}, status)
+        return self.send_json({'error': str(exc)}, status)
 
     def do_GET(self):
         if not self.allowed_host():
@@ -742,6 +748,8 @@ class WorkdeskAPI:
                 return self.serve_static('index.html', 'text/html; charset=utf-8')
             if uri.path == '/static/sync-status.js':
                 return self.serve_static('sync-status.js', 'text/javascript; charset=utf-8')
+            if uri.path == '/static/local-data.js':
+                return self.serve_static('local-data.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/contributions.js':
                 return self.serve_static('contributions.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/app.js':
@@ -785,7 +793,7 @@ class WorkdeskAPI:
                 return self.send_binary(f.getvalue().encode('utf-8-sig'), 'workdesk-tasks.csv', 'text/csv; charset=utf-8')
             return self.send_json({'error': 'Not found'}, 404)
         except Exception as exc:
-            self.handle_error(exc)
+            return self.handle_error(exc)
 
     def read_payload(self):
         # Bind server to localhost only, and reject cross-origin browser POSTs.
@@ -803,6 +811,23 @@ class WorkdeskAPI:
         try:
             uri = urlparse(self.path)
             p = self.read_payload()
+            if uri.path == '/api/local-backup':
+                if not self.local_storage:
+                    return self.send_json({'error': 'Local backups are available only on your computer.'}, 404)
+                return self.send_json(BACKUPS.create())
+            if uri.path == '/api/open-data-folder':
+                if not self.local_storage:
+                    return self.send_json({'error': 'This action is available only on your computer.'}, 404)
+                folder = default_data_dir()
+                if sys.platform == 'darwin':
+                    subprocess.run(['open', str(folder)], check=True, timeout=10)
+                elif os.name == 'nt':
+                    os.startfile(str(folder))
+                elif shutil.which('xdg-open'):
+                    subprocess.run(['xdg-open', str(folder)], check=True, timeout=10)
+                else:
+                    raise ValueError('Open the data folder shown in Settings using your file manager.')
+                return self.send_json({'opened': True})
             if uri.path == '/api/sync':
                 if SYNC_STATE['running']:
                     return self.send_json({'error': 'Sync already in progress'}, 409)
@@ -832,6 +857,12 @@ class WorkdeskAPI:
                 return self.send_json(save_manual(p), 201)
             if uri.path == '/api/settings':
                 with db_conn() as con:
+                    if 'theme' in p:
+                        theme = p['theme']
+                        if not isinstance(theme, str) or theme not in THEMES:
+                            raise ValueError('Choose a supported appearance theme.')
+                        con.execute("UPDATE settings SET value=? WHERE key='theme'", (json.dumps(theme),))
+                        con.execute("UPDATE settings SET value='true' WHERE key='theme_configured'")
                     for key, value in contributions.validate_settings(p).items():
                         con.execute('UPDATE settings SET value=? WHERE key=?', (json.dumps(value), key))
                     for key in ('notifications_enabled', 'desktop_notifications'):
@@ -869,7 +900,7 @@ class WorkdeskAPI:
                 raise ValueError('Unknown reminder action')
             return self.send_json({'error': 'Not found'}, 404)
         except Exception as exc:
-            self.handle_error(exc)
+            return self.handle_error(exc)
 
     def do_PATCH(self):
         if not self.allowed_host():
@@ -880,7 +911,7 @@ class WorkdeskAPI:
             item_id = unquote(self.path[len('/api/tasks/'):])
             return self.send_json(update_task(item_id, self.read_payload()))
         except Exception as exc:
-            self.handle_error(exc)
+            return self.handle_error(exc)
 
     def do_DELETE(self):
         if not self.allowed_host():
@@ -898,22 +929,33 @@ class WorkdeskAPI:
                 event(con, item_id, 'manual_deleted', f'Deleted manual task: {task["title"][:100]}')
             return self.send_json({'deleted': True})
         except Exception as exc:
-            self.handle_error(exc)
+            return self.handle_error(exc)
 
 
 class Handler(WorkdeskAPI, BaseHTTPRequestHandler):
     """Local HTTP transport. Hosted mode supplies its own authenticated transport."""
+    local_storage = True
 
 
 def main():
     ap = argparse.ArgumentParser(description=APP_NAME)
-    ap.add_argument('command', nargs='?', default='serve', choices=['serve', 'sync', 'install-reminder', 'remove-reminder', 'check-notifications', 'install-notifications', 'remove-notifications'])
+    ap.add_argument('command', nargs='?', default='serve', choices=['serve', 'sync', 'backup', 'install-reminder', 'remove-reminder', 'check-notifications', 'install-notifications', 'remove-notifications'])
     ap.add_argument('--port', type=int, default=8765)
     ap.add_argument('--time', default='09:00')
     ap.add_argument('--notify', action='store_true')
     ap.add_argument('--no-browser', action='store_true')
     args = ap.parse_args()
     init_db()
+    if args.command == 'backup':
+        try:
+            result = BACKUPS.create()
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        except Exception as exc:
+            print(f'Could not save local backup: {exc}', file=sys.stderr)
+            return 1
+    if args.command in ('serve', 'sync', 'check-notifications'):
+        BACKUPS.maybe_create()
     if args.command == 'check-notifications':
         result = NOTIFICATIONS.poll()
         print(json.dumps(result))
@@ -949,6 +991,7 @@ def main():
     url = f'http://127.0.0.1:{args.port}'
     print(f'\n  GitHub Workdesk  {url}\n  Database: {default_data_dir() / "workdesk.sqlite3"}\n  Ctrl+C to stop\n', flush=True)
     threading.Thread(target=NOTIFICATIONS.run, daemon=True).start()
+    threading.Thread(target=BACKUPS.run, args=(NOTIFICATIONS.stop,), daemon=True).start()
     if not args.no_browser:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()
     try:

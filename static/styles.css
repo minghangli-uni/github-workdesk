@@ -172,3 +172,5 @@ html[data-theme] :is(.nav-item,.button,.icon-button,.text-button,.row-action,sel
 .sync-diagnostic-errors p,.sync-diagnostic-notes p{color:var(--sub);font-size:11px;line-height:1.6;margin:9px 0}
 .sync-banner-actions{display:flex;flex-wrap:wrap;gap:18px;margin-top:12px}
 .sync-banner-actions button:disabled{opacity:.5;cursor:wait}
+
+#local-save-controls .button-row{margin:16px 0 10px}#local-backup-status.backup-error{color:var(--amber)}

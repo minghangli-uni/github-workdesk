@@ -26,6 +26,7 @@ function renderMobile() {
   $('backup-description').textContent = 'Your work is saved in hosted storage. Download a backup anytime. Exports exclude sign-in credentials and device subscriptions.';
   $('database-path').textContent = 'Shared hosted workspace';
   $('backup-eyebrow').textContent = 'YOUR DATA';
+  $('backup-heading').textContent = 'Export & backup';
   $('contribution-storage-note').textContent = 'Following a PR adds its updates to your inbox. Private notes and follow preferences are shared across your devices.';
   $('notification-browser-permission').classList.add('hidden');
   $('notification-background-install').classList.add('hidden');
