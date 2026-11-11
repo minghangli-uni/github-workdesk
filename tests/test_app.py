@@ -15,7 +15,7 @@ class TestWorkdesk(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, {'WORKDESK_DATA_DIR': self.temp.name})
         self.env.start()
-        contribution_sync = patch("app.contributions.sync", return_value=[])
+        contribution_sync = patch("app.contributions.sync", return_value={"errors": [], "warnings": []})
         contribution_sync.start()
         self.addCleanup(contribution_sync.stop)
         app.init_db()

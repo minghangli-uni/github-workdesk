@@ -56,7 +56,7 @@ python3 app.py sync --notify     # sync and notify (macOS)
 python3 app.py install-reminder --time 09:00  # macOS only
 python3 app.py remove-reminder   # macOS only
 python3 -m unittest discover -s tests -v
-node --test tests/test_contributions_ui.js  # contributor UI tests; Node 18+
+node --test tests/test_*_ui.js  # contributor UI tests; Node 18+
 ```
 
 The macOS scheduled sync runs while you're logged in and the system executes the LaunchAgent. It does not require the browser page to stay open. On other operating systems, notification checks run with the Workdesk server; browser desktop alerts require permission and an open Workdesk tab. The daily summary and background scheduling are macOS-only.
@@ -69,7 +69,7 @@ Expand **Your contribution** to see the exact commit/review links behind each ba
 
 Discovery combines authored/reviewed/commented PR searches, default-branch commit searches and commit-to-PR associations. Because [GitHub commit search only covers default branches](https://docs.github.com/en/search-github/searching-on-github/searching-commits), Workdesk also scans open PRs in discovered repositories. **Settings → Contribution discovery** accepts extra `owner/repository` entries for shared work elsewhere, plus your older/alternate commit emails. Verified GitHub emails are used when existing credentials permit access; no additional permission is requested automatically. The configured history window controls initial historical discovery; saved evidence remains available afterward.
 
-A sync checks up to 30 repositories for open PRs, 200 candidate PRs and 500 API requests; explicit extra repositories are prioritised. Commit-to-PR association checks are limited to 100 commits or a smaller available request budget. Search results, API errors and GitHub's 250-commit PR endpoint limit may leave gaps. **Discovery coverage** reports incomplete scans; previously saved work and private notes are preserved. The section is a record of discovered contributions, not an exhaustive GitHub contribution audit.
+A sync checks up to 30 repositories for open PRs, 200 candidate PRs and 500 API requests; explicit extra repositories are prioritised. Commit-to-PR association checks are limited to 100 commits or a smaller available request budget. Search results, API errors and GitHub's 250-commit PR endpoint limit may leave gaps. **Discovery coverage** separates coverage notes from requests that failed; previously saved work and private notes are preserved. Optional email access and scan limits produce an informational **Synced with limited contribution coverage** notice. Timeouts, authentication failures and other failed requests appear under **Requests to retry**, with a Retry sync action. All reasons are available in the expanded report. Existing saved sync reports are reclassified when upgrading; genuine failures are retained. CLI sync exits successfully for coverage-only limits. The section is a record of discovered contributions, not an exhaustive GitHub contribution audit.
 
 **Follow updates** tracks a PR through the notification watcher even when GitHub does not send you a participating thread. It checks the PR's latest activity timestamp while automatic notification checks run, and sends updates to the same local inbox and desktop alert system. Up to 50 PRs can be followed. It does not subscribe you on GitHub. Notes, follow preferences, evidence and discovery state are included in local JSON/SQLite backups and separated by GitHub account.
 

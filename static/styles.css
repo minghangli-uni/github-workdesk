@@ -155,3 +155,20 @@ html[data-theme] :is(.nav-item,.button,.icon-button,.text-button,.row-action,sel
 .contribution-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0}.contribution-dates{display:flex;gap:20px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-bottom:15px}.contribution-card .button-row{display:flex;gap:8px;flex-wrap:wrap}.contribution-card details{margin-top:16px;border-top:1px solid var(--border);padding-top:14px}.contribution-card summary,.contribution-coverage summary{cursor:pointer;color:var(--sub);font-size:12px;font-weight:650}.contribution-warning{color:var(--amber)}
 .contribution-evidence{list-style:none;padding:0;margin:14px 0;max-height:400px;overflow:auto}.contribution-evidence li{display:grid;gap:5px;padding:10px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere}.contribution-evidence a{font-size:12px;color:var(--accent)}.contribution-evidence span{font-size:10px;color:var(--muted)}.contribution-notes{display:grid;gap:8px;margin:14px 0;color:var(--sub);font-size:12px}.contribution-notes textarea{resize:vertical;width:100%;box-sizing:border-box}
 @media(max-width:700px){#contributions-panel{padding:16px}.contribution-card{padding:14px}.contribution-heading{flex-direction:column}.contribution-filters label{min-width:100%}#contributions-panel>.panel-title-row{flex-wrap:wrap;gap:12px}}
+
+/* Coverage notes are informational; actual request failures remain distinct. */
+.banner.banner-info{background:var(--surface);border-color:var(--accent);color:var(--text)}
+.banner.banner-warning{background:var(--surface);border-color:var(--amber);color:var(--text)}
+.banner.banner-error{background:var(--surface);border-color:var(--red);color:var(--text)}
+.banner.banner-info strong,.banner.banner-warning strong,.banner.banner-error strong{color:var(--text)}
+.signal.warning{background:var(--amber)}
+.sync-banner-description{margin:6px 0 10px;color:var(--sub)}
+#sync-diagnostics summary{cursor:pointer;font-weight:650}
+.sync-diagnostic-errors,.sync-diagnostic-notes{margin-top:14px;border-left:3px solid var(--border);padding-left:14px;color:var(--text)}
+.sync-diagnostic-errors{border-color:var(--amber)}.sync-diagnostic-notes{border-color:var(--accent)}
+.sync-diagnostic-errors h3,.sync-diagnostic-notes h3{font-size:12px;margin:0 0 7px;color:var(--text)}
+.sync-diagnostic-errors ul,.sync-diagnostic-notes ul{padding-left:18px;margin:0;overflow-wrap:anywhere}
+.sync-diagnostic-errors li,.sync-diagnostic-notes li{margin:6px 0}
+.sync-diagnostic-errors p,.sync-diagnostic-notes p{color:var(--sub);font-size:11px;line-height:1.6;margin:9px 0}
+.sync-banner-actions{display:flex;flex-wrap:wrap;gap:18px;margin-top:12px}
+.sync-banner-actions button:disabled{opacity:.5;cursor:wait}

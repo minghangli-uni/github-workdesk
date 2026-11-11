@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 import hashlib
 import json
 import re
+import sync_diagnostics
 
 REPO = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/(?!\.{1,2}\Z)[A-Za-z0-9_.-]+\Z')
 EMAIL = re.compile(r'[^\s<>"\\]+@[^\s<>"\\]+\.[^\s<>"\\]+\Z')
@@ -28,6 +29,7 @@ def init_db(con):
             requests INTEGER NOT NULL, repositories INTEGER NOT NULL
         );
     ''')
+    sync_diagnostics.migrate(con, 'contribution_sync')
     for key in ('contribution_repos', 'contribution_emails'):
         con.execute('INSERT OR IGNORE INTO settings(key,value) VALUES (?,?)', (key, '[]'))
 
@@ -62,6 +64,7 @@ def snapshot(con):
     status = dict(run) if run else None
     if status:
         status['errors'] = json.loads(status['errors'])
+        status['warnings'] = json.loads(status['warnings'])
     return {'username': username, 'items': items, 'sync': status}
 
 
@@ -150,7 +153,9 @@ def commit_evidence(raw, repo, username, emails):
 
 
 class ScanLimit(RuntimeError):
-    pass
+    def __init__(self, message, warning=True):
+        super().__init__(message)
+        self.warning = warning
 
 
 class Scanner:
@@ -161,6 +166,7 @@ class Scanner:
         self.emails = identities(profile, settings.get('contribution_emails', []))
         self.requests = 0
         self.errors = []
+        self.warnings = []
         self.repos = set(settings.get('contribution_repos', []))
         self.candidates = {}
         self.commits = {}
@@ -177,7 +183,7 @@ class Scanner:
             data = self.client.get(route, params)
         except RuntimeError as exc:
             if 'rate limit' in str(exc).lower():
-                raise ScanLimit('GitHub rate-limited contribution discovery. Saved results are retained; sync again later.') from exc
+                raise ScanLimit('GitHub rate-limited contribution discovery. Saved results are retained; sync again later.', warning=False) from exc
             raise
         self.cache[key] = data
         return data
@@ -200,10 +206,10 @@ class Scanner:
             rows = data.get('items', [])
             found.extend(rows)
             if data.get('incomplete_results'):
-                self.errors.append('GitHub returned incomplete contribution search results.')
+                self.warnings.append('GitHub returned incomplete contribution search results.')
             if len(found) >= data.get('total_count', 0) or not rows:
                 return found
-        self.errors.append('A contribution search exceeded GitHub’s 1,000-result limit.')
+        self.warnings.append('A contribution search exceeded GitHub’s 1,000-result limit.')
         return found
 
     def candidate(self, repo, number):
@@ -224,8 +230,13 @@ class Scanner:
             for email in self.pages('/user/emails', limit=1):
                 if email.get('verified') and EMAIL.fullmatch(email.get('email', '')):
                     self.emails.add(email['email'].lower())
-        except RuntimeError:
-            self.errors.append('Verified email lookup unavailable; co-author matching uses public, noreply and configured emails.')
+        except ScanLimit:
+            raise
+        except Exception as exc:
+            if getattr(exc, 'status', None) in (403, 404):
+                self.warnings.append('Optional email access is unavailable. Co-author matching uses public, noreply and configured addresses; add alternate commit emails in Contribution discovery settings.')
+            else:
+                self.errors.append(f'Email lookup: {exc}')
         queries = [f'is:pr author:{self.username} is:open',
                    f'is:pr author:{self.username} is:closed updated:>={self.since}',
                    f'is:pr reviewed-by:{self.username} is:open',
@@ -258,7 +269,7 @@ class Scanner:
                 if not repo.get('archived') and not repo.get('fork') and repo.get('full_name'):
                     self.repos.add(repo['full_name'].lower())
             if len(repositories) == 100:
-                self.errors.append('Repository discovery was limited to 100 recently pushed repositories. Add missing repositories in Settings.')
+                self.warnings.append('Repository discovery was limited to 100 recently pushed repositories. Add missing repositories in Settings.')
         except ScanLimit:
             raise
         except Exception as exc:
@@ -266,7 +277,7 @@ class Scanner:
         queries = [f'author:{self.username}', f'committer:{self.username}']
         queries += [f'"Co-authored-by" "{email}"' for email in sorted(self.emails)[:15]]
         if len(self.emails) > 15:
-            self.errors.append('Co-author search was limited to 15 email identities.')
+            self.warnings.append('Co-author search was limited to 15 email identities.')
         for query in queries:
             try:
                 for raw in self.search('commits', f'{query} committer-date:>={self.since}'):
@@ -298,16 +309,16 @@ class Scanner:
             commits = self.pages(f'/repos/{repo}/pulls/{number}/commits', limit=3)
             if len(commits) >= 250 and pr.get('commits', len(commits)) > len(commits):
                 complete = False
-                self.errors.append(f'PR {repo}#{number} exceeds GitHub’s 250-commit PR limit; available commit evidence was saved.')
+                self.warnings.append(f'PR {repo}#{number} exceeds GitHub’s 250-commit PR limit; available commit evidence was saved.')
             for raw in commits:
                 item = commit_evidence(raw, repo, self.username, self.emails)
                 if item:
                     evidence.append(item)
         except ScanLimit as exc:
-            if self.requests >= MAX_REQUESTS:
+            if self.requests >= MAX_REQUESTS or not exc.warning:
                 raise
             complete = False
-            self.errors.append(str(exc))
+            self.warnings.append(str(exc))
         except Exception as exc:
             complete = False
             self.errors.append(f'Commit evidence for {repo}#{number}: {exc}')
@@ -320,9 +331,9 @@ class Scanner:
                                      'title': 'Review: ' + review['state'].replace('_',' ').lower(),
                                      'date':review['submitted_at'], 'url':f'https://github.com/{repo}/pull/{number}#pullrequestreview-{review["id"]}'})
         except ScanLimit as exc:
-            if self.requests >= MAX_REQUESTS:
+            if self.requests >= MAX_REQUESTS or not exc.warning:
                 raise
-            complete = False; self.errors.append(str(exc))
+            complete = False; self.warnings.append(str(exc))
         except Exception as exc:
             complete = False; self.errors.append(f'Review evidence for {repo}#{number}: {exc}')
         # Discussion participation is opt-in in the UI; an assignment/mention alone is not evidence.
@@ -333,9 +344,9 @@ class Scanner:
                                      'title':'Commented on the conversation', 'date':comment['created_at'],
                                      'url':f'https://github.com/{repo}/pull/{number}#issuecomment-{comment["id"]}'})
         except ScanLimit as exc:
-            if self.requests >= MAX_REQUESTS:
+            if self.requests >= MAX_REQUESTS or not exc.warning:
                 raise
-            complete = False; self.errors.append(str(exc))
+            complete = False; self.warnings.append(str(exc))
         except Exception as exc:
             complete = False; self.errors.append(f'Comment evidence for {repo}#{number}: {exc}')
         if previous:
@@ -371,20 +382,20 @@ class Scanner:
             extra = self.settings.get('contribution_repos', [])
             repositories = list(dict.fromkeys(extra + sorted(self.repos)))
             if len(repositories) > MAX_REPOS:
-                self.errors.append(f'Open-PR scans limited to {MAX_REPOS} repositories. Extra repositories in Settings take priority.')
+                self.warnings.append(f'Open-PR scans limited to {MAX_REPOS} repositories. Extra repositories in Settings take priority.')
             for repo in repositories[:MAX_REPOS]:
                 try:
                     for pr in self.pages(f'/repos/{repo}/pulls', {'state':'open','sort':'updated','direction':'desc'}, limit=2):
                         self.candidate(repo, pr['number'])
                 except ScanLimit as exc:
-                    if self.requests >= MAX_REQUESTS: raise
-                    self.errors.append(str(exc))
+                    if self.requests >= MAX_REQUESTS or not exc.warning: raise
+                    self.warnings.append(str(exc))
                 except Exception as exc:
                     self.errors.append(f'Open PR discovery for {repo}: {exc}')
             # Reserve most requests for PR evidence rather than commit-to-PR lookups.
             association_limit = min(100, max(0, (MAX_REQUESTS - self.requests) // 3))
             if len(self.commits) > association_limit:
-                self.errors.append(f'PR association checks limited to {association_limit} commits this sync. Other commits are shown with unverified PR links.')
+                self.warnings.append(f'PR association checks limited to {association_limit} commits this sync. Other commits are shown with unverified PR links.')
             for repo, sha in list(self.commits)[:association_limit]:
                 try:
                     prs = self.pages(f'/repos/{repo}/commits/{sha}/pulls', limit=2)
@@ -392,12 +403,12 @@ class Scanner:
                     for pr in prs:
                         self.candidate(repo, pr['number'])
                 except ScanLimit as exc:
-                    if self.requests >= MAX_REQUESTS: raise
-                    self.errors.append(str(exc))
+                    if self.requests >= MAX_REQUESTS or not exc.warning: raise
+                    self.warnings.append(str(exc))
                 except Exception as exc:
                     self.errors.append(f'PR association for {repo}@{sha[:7]}: {exc}')
             if len(self.candidates) > MAX_PRS:
-                self.errors.append(f'Contribution scan limited to {MAX_PRS} PRs. Narrow repositories or the history window.')
+                self.warnings.append(f'Contribution scan limited to {MAX_PRS} PRs. Narrow repositories or the history window.')
             for repo, number in list(self.candidates.values())[:MAX_PRS]:
                 try:
                     item_id = f'pr:{repo}#{number}'
@@ -410,6 +421,8 @@ class Scanner:
                     raise
                 except Exception as exc:
                     self.errors.append(f'PR contribution {repo}#{number}: {exc}')
+        except ScanLimit as exc:
+            (self.warnings if exc.warning else self.errors).append(str(exc))
         except Exception as exc:
             self.errors.append(str(exc))
         # Preserve discovered commits even when enrichment fails or a request budget is reached.
@@ -421,10 +434,11 @@ class Scanner:
                     'roles':evidence['roles'], 'evidence':[evidence], 'linked_prs':linked, 'details_complete':(repo,sha) in associations}
             self.save(item)
         errors = list(dict.fromkeys(self.errors))
+        warnings = list(dict.fromkeys(self.warnings))
         with self.db_conn() as con:
-            con.execute('INSERT OR REPLACE INTO contribution_sync VALUES (?,?,?,?,?)',
-                        (self.username, utcnow(), json.dumps(errors), self.requests, len(self.repos)))
-        return errors
+            con.execute('INSERT OR REPLACE INTO contribution_sync (username,checked_at,errors,requests,repositories,warnings) VALUES (?,?,?,?,?,?)',
+                        (self.username, utcnow(), json.dumps(errors), self.requests, len(self.repos), json.dumps(warnings)))
+        return {'errors': errors, 'warnings': warnings}
 
 
 def sync(db_conn, client, profile, settings, since):

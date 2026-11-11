@@ -67,7 +67,8 @@ class TestContributions(unittest.TestCase):
 
     def scan(self):
         scanner=c.Scanner(app.db_conn,self.client,PROFILE,self.settings,'2026-01-01')
-        errors=scanner.run()
+        report=scanner.run()
+        errors=report['errors']
         with app.db_conn() as con:
             data=c.snapshot(con)
         return data,errors
@@ -184,7 +185,8 @@ class TestContributions(unittest.TestCase):
         self.scan()
         with patch.object(c,'MAX_REQUESTS',1):
             data,errors=self.scan()
-        self.assertTrue(errors)
+        self.assertFalse(errors)
+        self.assertTrue(data['sync']['warnings'])
         self.assertEqual(len(data['items']),1)
 
     def test_paginated_evidence_and_250_commit_limit(self):
@@ -199,7 +201,7 @@ class TestContributions(unittest.TestCase):
         scanner=c.Scanner(app.db_conn,self.client,PROFILE,self.settings,'2026-01-01')
         with patch.object(scanner,'pages',side_effect=pages):
             scanner.inspect_pr(REPO,1)
-        self.assertIn('250-commit',scanner.errors[0])
+        self.assertIn('250-commit',scanner.warnings[0])
 
     def test_followed_pr_alerts_once_even_without_github_thread(self):
         data,_=self.scan();item=data['items'][0]

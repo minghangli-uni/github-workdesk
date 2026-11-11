@@ -38,9 +38,10 @@ function renderContributions(){
   if(state.view!=='contributions')return;
   const run=data.sync;
   $('contribution-sync-status').textContent=state.data.sync.running?'Syncing contribution evidence…':run?`Last checked ${formatTime(run.checked_at)} · ${run.repositories} repositories discovered`:'Select Sync GitHub to discover your contributions.';
-  $('contribution-coverage-summary').textContent=run?.errors.length?'Discovery coverage · incomplete':'Discovery coverage';
-  $('contribution-coverage').textContent=run?.errors.length?run.errors.join(' '):'Search includes your PRs, submitted reviews, commit authorship and co-author credits. Open PRs are also scanned in your discovered and extra repositories.';
-  $('contribution-coverage').classList.toggle('contribution-warning',!!run?.errors.length);
+  const errors=run?.errors||[], warnings=run?.warnings||[], summary=diagnosticSummary(errors,warnings);
+  $('contribution-coverage-summary').textContent='Discovery coverage'+(summary?' · '+summary:'');
+  $('contribution-coverage').innerHTML=summary?diagnosticsHTML(errors,warnings):'Search includes your PRs, submitted reviews, commit authorship and co-author credits. Open PRs are also scanned in your discovered and extra repositories.';
+  $('contribution-coverage').classList.toggle('contribution-warning',!!errors.length);
   const select=$('contribution-repo');
   select.innerHTML='<option value="all">All repositories</option>'+[...new Set(data.items.map(i=>i.repo))].sort().map(repo=>`<option value="${esc(repo)}">${esc(repo)}</option>`).join('');
   select.value=contributionView.repo;

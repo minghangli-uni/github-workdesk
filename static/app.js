@@ -41,7 +41,7 @@ const pageInfo={contributions:['SHARED WORK','My contributions','See what you he
 
 async function request(path,opts={}){const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',...(opts.headers||{})}});let v;try{v=await r.json()}catch{v={error:`HTTP ${r.status}`}}if(!r.ok)throw Error(v.error||`HTTP ${r.status}`);return v}
 function toast(message,error=false){const node=document.createElement('div');node.className='toast'+(error?' error':'');node.textContent=message;$('toast-stack').appendChild(node);setTimeout(()=>node.remove(),4700)}
-function banner(html){$('banner').innerHTML=html;$('banner').classList.remove('hidden')}
+function banner(html,tone='warning'){$('banner').innerHTML=html;$('banner').className='banner banner-'+tone}
 function clearBanner(){$('banner').classList.add('hidden')}
 async function refresh(silent=false){try{state.data=await request('/api/dashboard');render();if(!silent&&!state.data.sync.running)toast('Local dashboard refreshed');}catch(e){banner(`<strong>Cannot load the local database.</strong> ${esc(e.message)}`)}}
 
@@ -61,15 +61,14 @@ function render(){if(!state.data)return;const data=state.data, c=counts();
   $('history-panel').classList.toggle('hidden',state.view!=='history');
   $('settings-panel').classList.toggle('hidden',state.view!=='settings');
   $('overview-panels').classList.toggle('hidden',state.view!=='overview');
-  const last=data.runs.find(r=>r.status!=='running');$('signal-dot').className='signal '+(last?.status==='success'?'online':last?'error':'');
-  $('connection-text').textContent=last?.status==='success'?'GitHub connected':last?.status==='partial'?'Sync partially complete':last?.status==='failed'?'Sync needs attention':'Local workspace';
+  const last=data.runs.find(r=>r.status!=='running'), syncView=syncPresentation(last);
+  $('signal-dot').className='signal '+syncView.signal;
+  $('connection-text').textContent=syncView.connection;
   $('sync-small').textContent=last?'Synced '+relativeDate(last.finished_at):'Not synced yet';
   $('last-updated').textContent=last?`Last sync: ${formatTime(last.finished_at||last.started_at)}`:'No GitHub sync recorded';
   const syncing=!!data.sync.running;$('sync-btn').disabled=syncing;$('sync-button-label').textContent=syncing?'Syncing…':'Sync GitHub';$('sync-icon').textContent=syncing?'◌':'↻';
-  if(last?.status==='failed')banner(`<strong>Last GitHub sync failed.</strong> ${esc(last.errors.join('; '))} <button data-go="settings">Open settings</button>`);
-  else if(last?.status==='partial')banner(`<strong>Partial GitHub sync.</strong> Some data could not be refreshed; previously saved work was preserved. ${esc(last.errors.slice(0,2).join('; '))}`);
-  else if(!last)banner('<strong>Welcome to your local workdesk.</strong> Sign in with <code>gh auth login</code> on your computer, then select “Sync GitHub” to import your PRs, review requests, and issues. You can add personal tasks immediately.');
-  else clearBanner();
+  if(!last)banner('<strong>Welcome to your local workdesk.</strong> Sign in with <code>gh auth login</code> on your computer, then select “Sync GitHub” to import your PRs, review requests, and issues. You can add personal tasks immediately.');
+  else if(!renderSyncNotice(last))clearBanner();
   $('banner').querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>switchView(b.dataset.go));
   renderRepositories();renderTable();renderAttention();renderChart();renderHistory();renderSettings();renderNotifications();renderContributions();
 }
@@ -165,7 +164,7 @@ function closeTask(){$('modal-backdrop').classList.add('hidden');state.editing=n
 async function patchTask(id,payload,message){try{await request('/api/tasks/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(payload)});await refresh(true);toast(message)}catch(e){toast(e.message,true)}}
 async function submitTask(e){e.preventDefault();const task=state.editing;const payload={priority:Number($('task-priority').value),due_date:$('task-due').value||null,notes:$('task-notes').value};if(!task||task.source==='manual')Object.assign(payload,{title:$('task-title').value.trim(),description:$('task-description').value,local_status:$('task-status').value,repo:$('task-repo').value.trim(),url:$('task-url').value.trim()});
   try{if(task)await request('/api/tasks/'+encodeURIComponent(task.id),{method:'PATCH',body:JSON.stringify(payload)});else await request('/api/tasks',{method:'POST',body:JSON.stringify(payload)});closeTask();await refresh(true);toast(task?'Task updated':'Task created and saved locally')}catch(err){toast(err.message,true)}}
-async function startSync(){try{await request('/api/sync',{method:'POST',body:'{}'});state.data.sync.running=true;render();toast('Sync started. GitHub history is saved locally.');if(state.poll)clearInterval(state.poll);state.poll=setInterval(async()=>{await refresh(true);if(!state.data.sync.running){clearInterval(state.poll);state.poll=null;if(state.data.sync.error)toast(state.data.sync.error,true);else toast('GitHub sync complete')}} ,2500)}catch(e){toast(e.message,true)}}
+async function startSync(){try{await request('/api/sync',{method:'POST',body:'{}'});state.data.sync.running=true;render();toast('Sync started. GitHub history is saved locally.');if(state.poll)clearInterval(state.poll);state.poll=setInterval(async()=>{await refresh(true);if(!state.data.sync.running){clearInterval(state.poll);state.poll=null;if(state.data.sync.error)toast(state.data.sync.error,true);else toast(state.data.sync.warnings?.length?'GitHub sync complete · limited contribution coverage':'GitHub sync complete')}} ,2500)}catch(e){toast(e.message,true)}}
 async function saveSettings(e){e.preventDefault();const payload={github_username:$('settings-username').value.trim(),focus_orgs:$('settings-orgs').value.split(',').map(x=>x.trim()).filter(Boolean),lookback_days:Number($('settings-lookback').value)};try{await request('/api/settings',{method:'POST',body:JSON.stringify(payload)});await refresh(true);toast('Settings saved. Sync again to apply GitHub history settings.')}catch(err){toast(err.message,true)}}
 async function reminder(action){try{await request('/api/reminder',{method:'POST',body:JSON.stringify({action,time:$('reminder-time').value})});await refresh(true);toast(action==='install'?'Daily GitHub sync and notification enabled':'Daily reminder disabled')}catch(e){toast(e.message,true)}}
 const notificationReasons = {contribution:'Update on a PR you follow',mention:'You were mentioned',team_mention:'Your team was mentioned',assign:'Assigned to you',review_requested:'Review requested',author:'Update on your work',comment:'Reply in a conversation',manual:'Subscribed conversation',state_change:'Status changed'};

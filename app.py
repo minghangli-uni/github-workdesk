@@ -30,6 +30,7 @@ import uuid
 import webbrowser
 import notifications
 import contributions
+import sync_diagnostics
 
 APP_NAME = 'GitHub Workdesk'
 ROOT = Path(__file__).resolve().parent
@@ -38,7 +39,7 @@ DEFAULT_ORGS = []  # Optional filter; empty means include all repositories
 AGENT_LABEL = 'local.github-workdesk.daily-sync'
 WATCHER_LABEL = 'local.github-workdesk.notifications'
 SYNC_LOCK = threading.Lock()
-SYNC_STATE = {'running': False, 'started_at': None, 'finished_at': None, 'error': None, 'message': None}
+SYNC_STATE = {'running': False, 'started_at': None, 'finished_at': None, 'error': None, 'message': None, 'warnings': []}
 
 
 def default_data_dir() -> Path:
@@ -138,6 +139,7 @@ def init_db():
           completed INTEGER NOT NULL
         );
         ''')
+        sync_diagnostics.migrate(con, 'sync_runs')
         notifications.init_db(con)
         contributions.init_db(con)
         for key, value in {
@@ -174,6 +176,12 @@ def github_token():
 NOTIFICATIONS = notifications.Monitor(db_conn, github_token)
 
 
+class GitHubAPIError(RuntimeError):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
 class GitHubClient:
     def __init__(self, token):
         self.token = token
@@ -203,8 +211,8 @@ class GitHubClient:
             except (ValueError, UnicodeDecodeError):
                 msg = exc.reason
             if exc.code in (401, 403):
-                raise RuntimeError(f'GitHub API {exc.code}: {msg}. Check your token/SSO/permissions.') from exc
-            raise RuntimeError(f'GitHub API {exc.code}: {msg}') from exc
+                raise GitHubAPIError(exc.code, f'GitHub API {exc.code}: {msg}. Check your token/SSO/permissions.') from exc
+            raise GitHubAPIError(exc.code, f'GitHub API {exc.code}: {msg}') from exc
         except URLError as exc:
             raise RuntimeError(f'Cannot connect to GitHub: {exc.reason}') from exc
 
@@ -335,7 +343,7 @@ def sync_github(client=None):
             except BlockingIOError:
                 raise RuntimeError('Another Workdesk process is already syncing.')
         started = utcnow()
-        SYNC_STATE.update(running=True, started_at=started, error=None, message='Syncing with GitHub')
+        SYNC_STATE.update(running=True, started_at=started, error=None, warnings=[], message='Syncing with GitHub')
         with db_conn() as con:
             opts = get_settings(con)
             cur = con.execute('INSERT INTO sync_runs(started_at,status) VALUES (?,?)', (started, 'running'))
@@ -393,8 +401,9 @@ def sync_github(client=None):
                 if role == 'assigned':
                     assigned_complete = False
         SYNC_STATE['message'] = 'Finding your contributions and checking commit evidence'
-        contribution_errors = contributions.sync(db_conn, client, profile, opts, since)
-        errors.extend('Contributions: ' + error for error in contribution_errors)
+        contribution_report = contributions.sync(db_conn, client, profile, opts, since)
+        errors.extend('Contributions: ' + error for error in contribution_report['errors'])
+        warnings = contribution_report['warnings']
         with db_conn() as con:
             old = con.execute("SELECT * FROM tasks WHERE source='github' AND (role_review=1 OR role_assigned=1)").fetchall()
             for task in old:
@@ -408,13 +417,13 @@ def sync_github(client=None):
             counts_now = summary_counts(con)
             con.execute('''INSERT INTO snapshots(created_at,open_prs,reviews,issues,manual_open,completed)
                            VALUES (?,?,?,?,?,?)''', (utcnow(), *counts_now.values()))
-            status = 'partial' if errors else 'success'
-            con.execute('''UPDATE sync_runs SET finished_at=?,status=?,added=?,changed=?,errors=? WHERE id=?''',
-                        (utcnow(), status, counts['new'], counts['updated'], json.dumps(errors), run_id))
+            status = sync_diagnostics.outcome(errors, warnings)
+            con.execute('''UPDATE sync_runs SET finished_at=?,status=?,added=?,changed=?,errors=?,warnings=? WHERE id=?''',
+                        (utcnow(), status, counts['new'], counts['updated'], json.dumps(errors), json.dumps(warnings), run_id))
         result = {'status': status, 'added': counts['new'], 'changed': counts['updated'],
-                  'errors': errors, 'counts': counts_now}
+                  'errors': errors, 'warnings': warnings, 'counts': counts_now}
         SYNC_STATE.update(running=False, finished_at=utcnow(), error='; '.join(errors) if errors else None,
-                          message=f'{counts["new"]} new · {counts["updated"]} updated')
+                          warnings=warnings, message=f'{counts["new"]} new · {counts["updated"]} updated')
         return result
     except Exception as exc:
         SYNC_STATE.update(running=False, finished_at=utcnow(), error=str(exc), message='Sync failed')
@@ -664,6 +673,7 @@ def dashboard(filters):
         runs = [dict(x) for x in con.execute('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 10')]
         for run in runs:
             run['errors'] = json.loads(run['errors'])
+            run['warnings'] = json.loads(run['warnings'])
         snapshots = [dict(x) for x in con.execute('SELECT * FROM snapshots ORDER BY id DESC LIMIT 90')][::-1]
         return {'tasks': data, 'events': events, 'runs': runs, 'snapshots': snapshots,
                 'repositories': repo_values, 'settings': settings, 'sync': SYNC_STATE.copy(),
@@ -727,6 +737,8 @@ class Handler(BaseHTTPRequestHandler):
             uri = urlparse(self.path)
             if uri.path == '/':
                 return self.serve_static('index.html', 'text/html; charset=utf-8')
+            if uri.path == '/static/sync-status.js':
+                return self.serve_static('sync-status.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/contributions.js':
                 return self.serve_static('contributions.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/app.js':
@@ -908,7 +920,7 @@ def main():
             print(json.dumps(result, ensure_ascii=False, indent=2))
             if args.notify:
                 scheduled_notification(result=result)
-            return 0 if result['status'] == 'success' else 2
+            return 0 if result['status'] in ('success', 'limited') else 2
         except Exception as exc:
             print(f'ERROR: {exc}', file=sys.stderr)
             if args.notify:
