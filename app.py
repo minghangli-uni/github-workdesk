@@ -39,6 +39,7 @@ DEFAULT_ORGS = []  # Optional filter; empty means include all repositories
 AGENT_LABEL = 'local.github-workdesk.daily-sync'
 WATCHER_LABEL = 'local.github-workdesk.notifications'
 SYNC_LOCK = threading.Lock()
+HOSTED_TOKEN_PROVIDER = None  # Set only by the authenticated cloud entry point.
 SYNC_STATE = {'running': False, 'started_at': None, 'finished_at': None, 'error': None, 'message': None, 'warnings': []}
 
 
@@ -161,6 +162,8 @@ def event(con, task_id, kind, msg):
 
 
 def github_token():
+    if HOSTED_TOKEN_PROVIDER is not None:
+        return HOSTED_TOKEN_PROVIDER()
     for var in ('GH_TOKEN', 'GITHUB_TOKEN'):
         if os.environ.get(var):
             return os.environ[var].strip()
@@ -682,7 +685,7 @@ def dashboard(filters):
                 'notification_watcher': watcher_path().exists(), 'contributions': contributions.snapshot(con)}
 
 
-class Handler(BaseHTTPRequestHandler):
+class WorkdeskAPI:
     server_version = 'GitHub-Workdesk/1.0'
 
     def allowed_host(self):
@@ -745,6 +748,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.serve_static('app.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/styles.css':
                 return self.serve_static('styles.css', 'text/css; charset=utf-8')
+            mobile_assets = {'mobile.js': 'text/javascript', 'mobile.css': 'text/css',
+                             'icon-192.png': 'image/png', 'icon-512.png': 'image/png'}
+            name = uri.path.removeprefix('/static/')
+            if uri.path.startswith('/static/') and name in mobile_assets:
+                return self.serve_static(name, mobile_assets[name])
             if uri.path == '/favicon.ico':
                 self.send_response(204); self.end_headers(); return
             if uri.path == '/api/dashboard':
@@ -891,6 +899,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({'deleted': True})
         except Exception as exc:
             self.handle_error(exc)
+
+
+class Handler(WorkdeskAPI, BaseHTTPRequestHandler):
+    """Local HTTP transport. Hosted mode supplies its own authenticated transport."""
 
 
 def main():

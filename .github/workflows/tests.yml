@@ -34,4 +34,18 @@ jobs:
           node --check static/app.js
           node --check static/sync-status.js
           node --check static/contributions.js
+          node --check static/mobile.js
+          node --check static/sw.js
           node --test tests/test_*_ui.js
+  hosted-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-cloud.txt
+      - run: python -m compileall -q cloud.py cloud_identity.py cloud_push.py
+      - run: python -m unittest discover -s tests -v
+      - name: Build hosted container
+        run: docker build -t github-workdesk:test .

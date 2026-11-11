@@ -1,0 +1,26 @@
+.cloud-account{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;padding:12px 16px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+.cloud-account span{color:var(--muted);font-size:12px}.cloud-account strong{color:var(--text)}
+.login-page{min-height:100dvh;display:grid;place-items:center;padding:30px 20px;background:radial-gradient(ellipse at 50% 10%,#173b45 0%,#0b1120 65%);color:#e5eef9}
+.login-card{width:min(100%,460px);padding:36px 30px;background:#101b2b;border:1px solid #294454;border-radius:24px;box-shadow:0 24px 80px #0004}
+.login-card>img{border-radius:20px;margin-bottom:24px}.login-card h1{font-size:clamp(30px,7vw,42px);line-height:1.18;letter-spacing:-1.5px;margin:14px 0 22px}
+.login-card p{font-size:15px;line-height:1.7;color:#afbed1}.login-card .login-note{font-size:12px;color:#8da5b9;line-height:1.7}
+.login-button{width:100%;display:flex;justify-content:center;min-height:50px;margin:28px 0 18px;text-decoration:none;font-size:15px}
+.login-features{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0;padding-top:22px;border-top:1px solid #294454}.login-features span{font-size:11px;border-radius:20px;padding:6px 10px;background:#173238;color:#9be1d3}
+#phone-settings .button-row{margin-bottom:12px}#backup-import{max-width:100%;font-size:14px}#phone-settings a{color:var(--accent)}
+@media(max-width:700px){
+  body{padding-bottom:env(safe-area-inset-bottom)}
+  .topbar{height:auto;min-height:65px;flex-wrap:wrap;padding:12px 16px;gap:12px}.top-actions{width:100%;justify-content:space-between;gap:6px;flex-wrap:wrap}
+  .topbar .button{min-height:44px;padding:9px 11px}.topbar .icon-button{min-width:44px;min-height:44px}
+  .sidebar nav{display:flex;overflow-x:auto;gap:6px;scrollbar-width:thin}.sidebar .nav-item{flex:0 0 auto;min-height:44px;white-space:nowrap;padding:10px 12px;font-size:12px}.sidebar nav+nav{margin-top:6px}
+  .content{padding:22px 14px}.page-heading{gap:12px;flex-wrap:wrap}.page-heading h1{font-size:28px}.header-side{margin-left:0}
+  .work-table{min-width:0;width:100%;display:block}.work-table thead{display:none}.work-table tbody{display:grid;padding:0 12px;gap:12px}
+  .work-table tr{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:12px;padding:12px;gap:10px}
+  .work-table td{display:block;border:0;padding:0;min-width:0;white-space:normal}.work-table td:first-child{grid-column:1/-1;padding-left:0}.work-table td:last-child{grid-column:1/-1;padding-top:8px;border-top:1px solid var(--border)}
+  .work-table td:nth-child(2)::before{content:'Role'}.work-table td:nth-child(3)::before{content:'Status'}.work-table td:nth-child(4)::before{content:'Priority'}.work-table td:nth-child(5)::before{content:'Updated'}
+  .work-table td:nth-child(n+2):nth-child(-n+5)::before{display:block;font-size:10px;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.08em}
+  .task-title{white-space:normal;overflow-wrap:anywhere}.task-repo{flex-wrap:wrap}.row-actions{justify-content:flex-end}.row-action{min-height:44px;padding:8px 12px}
+  .settings-layout{grid-template-columns:1fr}.settings-card{padding:20px}.settings-card input,.settings-card select,.settings-card textarea,.modal input,.modal textarea,.modal select{font-size:16px}
+  .notification-item{flex-wrap:wrap}.notification-item .button{min-height:44px}.cloud-account{flex-wrap:wrap}
+  .modal{width:calc(100vw - 20px);max-height:calc(100dvh - 24px);overflow-y:auto}.form-grid{grid-template-columns:1fr}.modal-actions .button{min-height:44px}
+  .contribution-card{overflow-wrap:anywhere}.button,.nav-item,.row-action{touch-action:manipulation}
+}

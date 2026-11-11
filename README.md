@@ -1,5 +1,10 @@
 # GitHub Workdesk
 
+**Mac + iPhone:** an optional hosted mode adds owner-only GitHub sign-in, shared
+tasks and notes, an installable Home Screen app, and Web Push alerts while your Mac
+is off. See [HOSTING.md](HOSTING.md) for the prepared Render deployment, costs,
+setup and import instructions. Local mode remains available without dependencies.
+
 **A local-first, open-source dashboard for managing your GitHub pull requests, requested reviews, issues, and personal to-dos.** Runs in your browser; your notes and synced metadata stay on your own machine. No hosted Workdesk account, Python dependencies, or server subscription required.
 
 ![GitHub Workdesk demo with fictional data](docs/dashboard-demo.png)
@@ -87,7 +92,7 @@ On **Linux and Windows**, select **Allow browser alerts** and leave the tab open
 
 ## Data and privacy
 
-GitHub Workdesk is not a hosted web service. Opening or publishing this **source repository** does not publish your GitHub work data. At runtime, the data lives in a per-user SQLite database:
+By default, Workdesk runs locally. Opening or publishing this **source repository** does not publish your GitHub work data. Local mode stores data in a per-user SQLite database:
 
 | OS | Default database location |
 | --- | --- |
@@ -95,7 +100,7 @@ GitHub Workdesk is not a hosted web service. Opening or publishing this **source
 | Linux | `~/.local/share/github-workdesk/workdesk.sqlite3` |
 | Windows | `%LOCALAPPDATA%/GitHub Workdesk/workdesk.sqlite3` |
 
-Override with `WORKDESK_DATA_DIR=/custom/path`. The app listens on `127.0.0.1` and does **not** provide an authenticated multi-user server. Do not expose its port to the internet. GitHub requests go to the GitHub API; they do not flow through an application-operated backend. See [SECURITY.md](SECURITY.md) for more.
+Override with `WORKDESK_DATA_DIR=/custom/path`. Local `app.py` listens on `127.0.0.1`; do not expose that server to the internet. Optional `cloud.py` provides authenticated single-owner hosting behind HTTPS. In hosted mode, work records and encrypted GitHub credentials reside on your chosen host, and requests to GitHub originate there. Both modes use GitHub read-only. See [SECURITY.md](SECURITY.md) and [HOSTING.md](HOSTING.md).
 
 **Migration:** If you previously used an older, individually customized release, its SQLite database may have been stored in a differently named directory. This clean public release starts with its own database to avoid mixing installations. Back up the old database before considering any manual migration.
 

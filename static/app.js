@@ -37,13 +37,13 @@ const inScope = t => t.source==='manual' || state.filter.repo==='all' || (state.
 const mainItems = () => state.data.tasks.filter(inScope);
 function counts(){const ts=mainItems();return {reviews:ts.filter(t=>t.role_review&&!isFinished(t)).length,prs:ts.filter(t=>t.kind==='pr'&&t.role_author&&!isFinished(t)).length,issues:ts.filter(t=>t.kind==='issue'&&t.role_assigned&&!isFinished(t)).length,manual:ts.filter(t=>t.source==='manual'&&!isFinished(t)).length,completed:ts.filter(isFinished).length}}
 const navNames = {contributions:'My contributions',notifications:'Notifications',overview:'Overview',reviews:'My reviews',prs:'My pull requests',issues:'GitHub issues',tasks:'Personal tasks',completed:'Completed',history:'Activity history',settings:'Settings & backup'};
-const pageInfo={contributions:['SHARED WORK','My contributions','See what you helped build and what is still moving.'],notifications:['STAY UP TO DATE','Your notifications','New activity in the conversations and work that involve you.'],overview:['YOUR DAILY SNAPSHOT','Your work at a glance','Track what’s moving, what needs your review, and what’s next.'],reviews:['CODE REVIEW QUEUE','Reviews awaiting you','The pull requests where your feedback is currently requested.'],prs:['PULL REQUEST TRACKER','Your pull requests','Monitor outstanding, merged, closed, and draft PRs.'],issues:['ISSUE TRACKER','GitHub issues','Your assigned issues and issues you opened.'],tasks:['PERSONAL TO-DOS','Your personal tasks','Add, prioritise, and complete work that does not live on GitHub.'],completed:['WORK HISTORY','Completed and closed','A lasting record of merged, closed, and finished work.'],history:['AUDIT TRAIL','Activity history','See what changed and when it happened.'],settings:['YOUR WORKSPACE','Settings & backups','Manage synchronization, reminders, and local data.']};
+const pageInfo={contributions:['SHARED WORK','My contributions','See what you helped build and what is still moving.'],notifications:['STAY UP TO DATE','Your notifications','New activity in the conversations and work that involve you.'],overview:['YOUR DAILY SNAPSHOT','Your work at a glance','Track what’s moving, what needs your review, and what’s next.'],reviews:['CODE REVIEW QUEUE','Reviews awaiting you','The pull requests where your feedback is currently requested.'],prs:['PULL REQUEST TRACKER','Your pull requests','Monitor outstanding, merged, closed, and draft PRs.'],issues:['ISSUE TRACKER','GitHub issues','Your assigned issues and issues you opened.'],tasks:['PERSONAL TO-DOS','Your personal tasks','Add, prioritise, and complete work that does not live on GitHub.'],completed:['WORK HISTORY','Completed and closed','A lasting record of merged, closed, and finished work.'],history:['AUDIT TRAIL','Activity history','See what changed and when it happened.'],settings:['YOUR WORKSPACE','Settings & backups','Manage synchronization, notifications, and saved data.']};
 
-async function request(path,opts={}){const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',...(opts.headers||{})}});let v;try{v=await r.json()}catch{v={error:`HTTP ${r.status}`}}if(!r.ok)throw Error(v.error||`HTTP ${r.status}`);return v}
+async function request(path,opts={}){const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',...(state.data?.csrf_token?{'X-Workdesk-CSRF':state.data.csrf_token}:{}),...(opts.headers||{})}});let v;try{v=await r.json()}catch{v={error:`HTTP ${r.status}`}}if(r.status===401&&v.login_url)window.location.replace(v.login_url);if(!r.ok)throw Error(v.error||`HTTP ${r.status}`);return v}
 function toast(message,error=false){const node=document.createElement('div');node.className='toast'+(error?' error':'');node.textContent=message;$('toast-stack').appendChild(node);setTimeout(()=>node.remove(),4700)}
 function banner(html,tone='warning'){$('banner').innerHTML=html;$('banner').className='banner banner-'+tone}
 function clearBanner(){$('banner').classList.add('hidden')}
-async function refresh(silent=false){try{state.data=await request('/api/dashboard');render();if(!silent&&!state.data.sync.running)toast('Local dashboard refreshed');}catch(e){banner(`<strong>Cannot load the local database.</strong> ${esc(e.message)}`)}}
+async function refresh(silent=false){try{state.data=await request('/api/dashboard');render();if(!silent&&!state.data.sync.running)toast('Workspace refreshed');}catch(e){banner(`<strong>Cannot load your workspace.</strong> ${esc(e.message)}`)}}
 
 function render(){if(!state.data)return;const data=state.data, c=counts();
   $('stat-reviews').textContent=c.reviews;$('stat-prs').textContent=c.prs;$('stat-issues').textContent=c.issues;$('stat-manual').textContent=c.manual;$('stat-completed').textContent=c.completed;
@@ -67,7 +67,8 @@ function render(){if(!state.data)return;const data=state.data, c=counts();
   $('sync-small').textContent=last?'Synced '+relativeDate(last.finished_at):'Not synced yet';
   $('last-updated').textContent=last?`Last sync: ${formatTime(last.finished_at||last.started_at)}`:'No GitHub sync recorded';
   const syncing=!!data.sync.running;$('sync-btn').disabled=syncing;$('sync-button-label').textContent=syncing?'Syncing…':'Sync GitHub';$('sync-icon').textContent=syncing?'◌':'↻';
-  if(!last)banner('<strong>Welcome to your local workdesk.</strong> Sign in with <code>gh auth login</code> on your computer, then select “Sync GitHub” to import your PRs, review requests, and issues. You can add personal tasks immediately.');
+  if(!last&&data.hosted)banner('<strong>Welcome to your shared Workdesk.</strong> Import your saved work in Settings, or select “Sync GitHub” to get started.','info');
+  else if(!last)banner('<strong>Welcome to your local workdesk.</strong> Sign in with <code>gh auth login</code> on your computer, then select “Sync GitHub” to import your PRs, review requests, and issues. You can add personal tasks immediately.');
   else if(!renderSyncNotice(last))clearBanner();
   $('banner').querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>switchView(b.dataset.go));
   renderRepositories();renderTable();renderAttention();renderChart();renderHistory();renderSettings();renderNotifications();renderContributions();
@@ -150,10 +151,11 @@ $('settings-username').value=data.settings.github_username;$('settings-orgs').va
   $('reminder-time').value=data.reminder.time;$('reminder-status').textContent=data.reminder.installed?'Enabled: every day at '+data.reminder.time+' (local time)':'Not enabled. The webpage still supports manual sync.';
   $('reminder-install').disabled=data.platform!=='darwin';$('reminder-remove').disabled=data.platform!=='darwin'||!data.reminder.installed;
   $('database-path').textContent=data.data_dir+'/workdesk.sqlite3';$('theme-select').value=selectedTheme;$('auth-hint').textContent='GitHub account: '+(data.settings.github_username || (data.settings.last_synced_user ? data.settings.last_synced_user+' (auto-detected)' : 'auto-detect on sync'))+' · If authentication fails, run “gh auth login” in Terminal.';
+  renderMobile();
 }
 function switchView(view){state.view=view;state.limit=30;render();window.scrollTo({top:0,behavior:'smooth'})}
 
-function openTask(task=null){state.editing=task;const isGh=!!task&&task.source==='github';$('task-id').value=task?.id||'';$('modal-title').textContent=!task?'Create a new task':isGh?'Edit local tracking details':'Edit personal task';$('modal-eyebrow').textContent=isGh?'GITHUB ITEM · PRIVATE ANNOTATIONS':'PERSONAL TASK';
+function openTask(task=null){state.editing=task;const isGh=!!task&&task.source==='github';$('task-id').value=task?.id||'';$('modal-title').textContent=!task?'Create a new task':isGh?'Edit tracking details':'Edit personal task';$('modal-eyebrow').textContent=isGh?'GITHUB ITEM · PRIVATE ANNOTATIONS':'PERSONAL TASK';
   $('task-title').value=task?.title||'';$('task-description').value=task?.description||'';$('task-status').value=task?.local_status||'todo';$('task-priority').value=task?.priority||2;$('task-due').value=task?.due_date||'';$('task-repo').value=task?.repo||'';$('task-url').value=task?.url||'';$('task-notes').value=task?.notes||'';
   for(const id of ['title-wrapper','description-wrapper','status-wrapper','repo-wrapper','url-wrapper'])$(id).classList.toggle('hidden',isGh);
   $('task-title').required=!isGh;$('task-delete').classList.toggle('hidden',!task||isGh);
@@ -163,8 +165,8 @@ function openTask(task=null){state.editing=task;const isGh=!!task&&task.source==
 function closeTask(){$('modal-backdrop').classList.add('hidden');state.editing=null}
 async function patchTask(id,payload,message){try{await request('/api/tasks/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(payload)});await refresh(true);toast(message)}catch(e){toast(e.message,true)}}
 async function submitTask(e){e.preventDefault();const task=state.editing;const payload={priority:Number($('task-priority').value),due_date:$('task-due').value||null,notes:$('task-notes').value};if(!task||task.source==='manual')Object.assign(payload,{title:$('task-title').value.trim(),description:$('task-description').value,local_status:$('task-status').value,repo:$('task-repo').value.trim(),url:$('task-url').value.trim()});
-  try{if(task)await request('/api/tasks/'+encodeURIComponent(task.id),{method:'PATCH',body:JSON.stringify(payload)});else await request('/api/tasks',{method:'POST',body:JSON.stringify(payload)});closeTask();await refresh(true);toast(task?'Task updated':'Task created and saved locally')}catch(err){toast(err.message,true)}}
-async function startSync(){try{await request('/api/sync',{method:'POST',body:'{}'});state.data.sync.running=true;render();toast('Sync started. GitHub history is saved locally.');if(state.poll)clearInterval(state.poll);state.poll=setInterval(async()=>{await refresh(true);if(!state.data.sync.running){clearInterval(state.poll);state.poll=null;if(state.data.sync.error)toast(state.data.sync.error,true);else toast(state.data.sync.warnings?.length?'GitHub sync complete · limited contribution coverage':'GitHub sync complete')}} ,2500)}catch(e){toast(e.message,true)}}
+  try{if(task)await request('/api/tasks/'+encodeURIComponent(task.id),{method:'PATCH',body:JSON.stringify(payload)});else await request('/api/tasks',{method:'POST',body:JSON.stringify(payload)});closeTask();await refresh(true);toast(task?'Task updated':'Task created and saved')}catch(err){toast(err.message,true)}}
+async function startSync(){try{await request('/api/sync',{method:'POST',body:'{}'});state.data.sync.running=true;render();toast('Sync started. GitHub history is saved in your workspace.');if(state.poll)clearInterval(state.poll);state.poll=setInterval(async()=>{await refresh(true);if(!state.data.sync.running){clearInterval(state.poll);state.poll=null;if(state.data.sync.error)toast(state.data.sync.error,true);else toast(state.data.sync.warnings?.length?'GitHub sync complete · limited contribution coverage':'GitHub sync complete')}} ,2500)}catch(e){toast(e.message,true)}}
 async function saveSettings(e){e.preventDefault();const payload={github_username:$('settings-username').value.trim(),focus_orgs:$('settings-orgs').value.split(',').map(x=>x.trim()).filter(Boolean),lookback_days:Number($('settings-lookback').value)};try{await request('/api/settings',{method:'POST',body:JSON.stringify(payload)});await refresh(true);toast('Settings saved. Sync again to apply GitHub history settings.')}catch(err){toast(err.message,true)}}
 async function reminder(action){try{await request('/api/reminder',{method:'POST',body:JSON.stringify({action,time:$('reminder-time').value})});await refresh(true);toast(action==='install'?'Daily GitHub sync and notification enabled':'Daily reminder disabled')}catch(e){toast(e.message,true)}}
 const notificationReasons = {contribution:'Update on a PR you follow',mention:'You were mentioned',team_mention:'Your team was mentioned',assign:'Assigned to you',review_requested:'Review requested',author:'Update on your work',comment:'Reply in a conversation',manual:'Subscribed conversation',state_change:'Status changed'};
@@ -192,7 +194,7 @@ async function refreshNotifications(){
     notificationData=next;renderNotifications();
     if(next.enabled&&fresh.length){
       toast(`${fresh.length} new GitHub update${fresh.length===1?'':'s'}: ${short(fresh[0].title,100)}`);
-      if(next.desktop&&state.data?.platform!=='darwin'&&'Notification' in window&&Notification.permission==='granted'){
+      if(!state.data?.hosted&&next.desktop&&state.data?.platform!=='darwin'&&'Notification' in window&&Notification.permission==='granted'){
         try {
           const alert=new Notification('GitHub Workdesk',{body:fresh.length===1?`${fresh[0].repo}: ${fresh[0].title}`:`${fresh.length} new updates in your notification inbox.`,tag:'workdesk-'+next.latest});
           alert.onclick=()=>{window.focus();switchView('notifications');alert.close()};
@@ -221,7 +223,7 @@ async function notificationWatcher(action){
   catch(e){toast(e.message,true)}
 }
 
-function bind(){bindContributions();document.querySelectorAll('.nav-item[data-view]').forEach(e=>e.onclick=()=>switchView(e.dataset.view));document.querySelectorAll('[data-jump]').forEach(e=>e.onclick=()=>switchView(e.dataset.jump));$('sync-btn').onclick=startSync;$('refresh-btn').onclick=()=>refresh();$('new-task-btn').onclick=()=>openTask();$('empty-new').onclick=()=>openTask();$('show-reviews').onclick=()=>switchView('reviews');$('show-more-btn').onclick=()=>{state.limit+=30;renderTable()};$('export-csv').onclick=()=>{window.location.href='/api/export.csv'};
+function bind(){bindMobile();bindContributions();document.querySelectorAll('.nav-item[data-view]').forEach(e=>e.onclick=()=>switchView(e.dataset.view));document.querySelectorAll('[data-jump]').forEach(e=>e.onclick=()=>switchView(e.dataset.jump));$('sync-btn').onclick=startSync;$('refresh-btn').onclick=()=>refresh();$('new-task-btn').onclick=()=>openTask();$('empty-new').onclick=()=>openTask();$('show-reviews').onclick=()=>switchView('reviews');$('show-more-btn').onclick=()=>{state.limit+=30;renderTable()};$('export-csv').onclick=()=>{window.location.href='/api/export.csv'};
   $('modal-close').onclick=closeTask;$('task-cancel').onclick=closeTask;$('modal-backdrop').onclick=e=>{if(e.target===$('modal-backdrop'))closeTask()};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('modal-backdrop').classList.contains('hidden'))closeTask()});$('task-form').onsubmit=submitTask;
   $('task-delete').onclick=async()=>{const task=state.editing;if(!task||task.source!=='manual')return;if(!confirm('Delete this manual task? This cannot be undone.'))return;try{await request('/api/tasks/'+encodeURIComponent(task.id),{method:'DELETE',body:'{}'});closeTask();await refresh(true);toast('Task deleted')}catch(err){toast(err.message,true)}};
   $('search-input').oninput=e=>{state.filter.query=e.target.value;state.limit=30;renderTable()};
@@ -240,6 +242,8 @@ function bind(){bindContributions();document.querySelectorAll('.nav-item[data-vi
   $('theme-select').onchange=e=>applyTheme(e.target.value);$('settings-form').onsubmit=saveSettings;$('reminder-install').onclick=()=>reminder('install');$('reminder-remove').onclick=()=>reminder('remove');
 }
 
+const initialView=new URLSearchParams(window.location.search).get('view');
+if(Object.hasOwn(navNames,initialView))state.view=initialView;
 bind();refresh(true);refreshNotifications();
 setInterval(refreshNotifications,5000);
 // Refresh background sync progress too, including a sync that was already running on page load.

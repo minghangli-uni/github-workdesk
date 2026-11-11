@@ -60,17 +60,61 @@ if ! git config user.email >/dev/null; then
   git config user.email "${USER_ID}+${OWNER}@users.noreply.github.com"
 fi
 
-git add -- .gitignore .github/workflows/tests.yml LICENSE README.md ROADMAP.md SECURITY.md \
-  CONTRIBUTING.md publish-to-github.command start.command \
-  app.py static/index.html static/styles.css static/app.js tests/test_app.py docs/dashboard-demo.png
+SOURCE_FILES=(
+  .gitignore
+  .dockerignore
+  .env.example
+  .github/workflows/tests.yml
+  LICENSE
+  README.md
+  ROADMAP.md
+  SECURITY.md
+  HOSTING.md
+  CONTRIBUTING.md
+  publish-to-github.command
+  start.command
+  app.py
+  notifications.py
+  contributions.py
+  sync_diagnostics.py
+  cloud.py
+  cloud_identity.py
+  cloud_push.py
+  container_start.py
+  Dockerfile
+  render.yaml
+  requirements-cloud.txt
+  static/index.html
+  static/styles.css
+  static/app.js
+  static/contributions.js
+  static/sync-status.js
+  static/mobile.js
+  static/mobile.css
+  static/login.html
+  static/offline.html
+  static/sw.js
+  static/manifest.webmanifest
+  static/icon-192.png
+  static/icon-512.png
+  scripts/generate-app-icons.py
+  tests/test_app.py
+  tests/test_notifications.py
+  tests/test_contributions.py
+  tests/test_sync_diagnostics.py
+  tests/test_cloud.py
+  tests/test_contributions_ui.js
+  tests/test_sync_status_ui.js
+  tests/test_mobile_ui.js
+  docs/dashboard-demo.png
+)
+git add -- "${SOURCE_FILES[@]}"
 
 # Confirm unexpected files have not been staged by a pre-existing Git repo.
 EXPECTED=$(mktemp)
 ACTUAL=$(mktemp)
 trap 'rm -f "$EXPECTED" "$ACTUAL"' EXIT
-printf '%s\n' .gitignore .github/workflows/tests.yml LICENSE README.md ROADMAP.md SECURITY.md \
- CONTRIBUTING.md publish-to-github.command start.command app.py \
- static/index.html static/styles.css static/app.js tests/test_app.py docs/dashboard-demo.png | sort > "$EXPECTED"
+printf '%s\n' "${SOURCE_FILES[@]}" | sort > "$EXPECTED"
 git diff --cached --name-only | sort > "$ACTUAL"
 if grep -q '^$' "$ACTUAL"; then echo 'Unexpected empty file path.'; exit 1; fi
 if [[ -n "$(comm -13 "$EXPECTED" "$ACTUAL")" ]]; then

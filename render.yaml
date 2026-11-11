@@ -1,0 +1,29 @@
+# One always-on instance; do not use a sleeping/free service for notification checks.
+services:
+  - type: web
+    name: github-workdesk
+    runtime: docker
+    plan: 0.5c-512mb
+    region: singapore
+    numInstances: 1
+    autoDeployTrigger: 'off'
+    healthCheckPath: /api/health
+    disk:
+      name: workdesk-data
+      mountPath: /var/lib/workdesk
+      sizeGB: 1
+    envVars:
+      - key: WORKDESK_DATA_DIR
+        value: /var/lib/workdesk
+      - key: WORKDESK_SECRET_KEY
+        generateValue: true
+      - key: WORKDESK_OWNER_ID
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: WORKDESK_SYNC_INTERVAL
+        value: "1800"
+# RENDER_EXTERNAL_URL supplies the canonical HTTPS origin automatically.
+# Set WORKDESK_PUBLIC_URL explicitly if you use a custom domain.

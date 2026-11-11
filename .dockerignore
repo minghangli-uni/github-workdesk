@@ -1,0 +1,13 @@
+*
+!Dockerfile
+!requirements-cloud.txt
+!app.py
+!notifications.py
+!contributions.py
+!sync_diagnostics.py
+!cloud.py
+!cloud_identity.py
+!cloud_push.py
+!container_start.py
+!static/
+!static/**
