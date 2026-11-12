@@ -6,6 +6,8 @@
 !contributions.py
 !sync_diagnostics.py
 !local_backups.py
+!phone_access.py
+!view_filters.py
 !cloud.py
 !cloud_identity.py
 !cloud_push.py
