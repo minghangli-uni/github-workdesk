@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Check Python syntax
-        run: python -m compileall -q app.py notifications.py contributions.py sync_diagnostics.py local_backups.py phone_access.py tests
+        run: python -m compileall -q app.py notifications.py contributions.py sync_diagnostics.py local_backups.py phone_access.py view_filters.py tests
       - name: Unit tests
         run: python -m unittest discover -s tests -v
       - name: Set up Node for UI logic tests
@@ -33,6 +33,8 @@ jobs:
         run: |
           node --check static/app.js
           node --check static/sync-status.js
+          node --check static/work-items.js
+          node --check static/view-filters.js
           node --check static/contributions.js
           node --check static/mobile.js
           node --check static/phone-access.js

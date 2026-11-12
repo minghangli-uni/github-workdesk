@@ -22,7 +22,8 @@ Closed-app iPhone push alerts are not enabled by this connection.
 - **Review queue:** requests for your review; removed requests are not automatically assumed to have been reviewed.
 - **Issues:** assigned issues and issues you created.
 - **Personal tasks:** title, priority, due date, notes, links, completion status and history, independent of GitHub.
-- **Filters:** repository, text, time range, completion state and role.
+- **Roles and status:** separate role badges backed by contribution evidence, with purple Merged, red Closed without merge, green Open and grey Draft badges across the work table and contributions. A removed review request never implies a submitted review.
+- **Filters:** repository, text, time range, role and precise status. Choices are saved in the Workdesk database separately for each view; Reset filters restores that view’s defaults.
 - **Activity:** timestamped task updates and work-count snapshots.
 - **Appearance:** Follow System, GitHub Light, GitHub Dark, Linear-inspired Dark, Catppuccin Mocha, Nord, and Dracula; saved in your local database and included in backups.
 - **Local backups:** daily automatic snapshots, a “Save backup on this Mac” button, and JSON/CSV/SQLite downloads.
@@ -75,7 +76,7 @@ The macOS scheduled sync runs while you're logged in and the system executes the
 
 ## My contributions
 
-Open **My contributions** after **Sync GitHub**. **Active** shows open PRs you helped with; **History** contains merged/closed PRs and standalone commits. Filter by repository, role or your contribution date; sort by the latest PR activity or your own latest contribution. Discussion-only participation is optional. A review request alone does not count as a submitted review.
+Open **My contributions** after **Sync GitHub**. **Active** shows open PRs you helped with; **History** contains merged/closed PRs and standalone commits. Filter by repository, role, PR status or your contribution date; sort by the latest PR activity or your own latest contribution. Discussion-only participation is optional. A review request alone does not count as a submitted review. Verified roles also appear on matching PR rows in the main work table. Contribution-only PRs remain in My contributions. Choosing Merged or Closed without merge switches the contributions view to History; choosing Open or Draft switches to Active.
 
 Expand **Your contribution** to see the exact commit/review links behind each badge and add private notes. **PR author**, **Code contributor**, **Co-author**, **Committer** and **Reviewer** describe distinct kinds of involvement. Co-author credits match email addresses in trailing `Co-authored-by` metadata; names alone are not used. Previously recorded evidence is retained and labelled if later removed by a force-push or review deletion. “Reviewed” reflects a current-head approval, not a guarantee that all merge requirements are satisfied.
 

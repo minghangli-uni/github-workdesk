@@ -1,6 +1,6 @@
 'use strict';
-const contributionView = {tab:'active',repo:'all',role:'all',period:'all',query:'',discussion:false,sort:'activity',limit:30,expanded:new Set(),drafts:new Map(),account:null};
-const contributionRoles = {author:'PR author',coauthor:'Co-author',code:'Code contributor',committer:'Committer',reviewer:'Reviewer',commenter:'Discussion'};
+const contributionView = {tab:'active',repo:'all',role:'all',status:'any',period:'all',query:'',discussion:false,sort:'activity',limit:30,expanded:new Set(),drafts:new Map(),account:null};
+const contributionRoles = Object.fromEntries(Object.entries(WORK_ROLES).map(([key,value])=>[key,value[0]]));
 function contributionItems(){return state.data?.contributions?.items||[]}
 function contributionActive(item){return item.kind==='pr'&&item.state==='open'}
 function contributionVisible(item){return contributionView.discussion||item.roles.some(role=>role!=='commenter')}
@@ -8,7 +8,8 @@ function filteredContributions(){
   const f=contributionView;
   return contributionItems().filter(item=>contributionVisible(item)&&
     (f.tab==='active'?contributionActive(item):!contributionActive(item))&&
-    (f.repo==='all'||item.repo===f.repo)&&(f.role==='all'||item.roles.includes(f.role))&&
+    (f.repo==='all'||item.repo===f.repo)&&(f.role==='all'||contributionRoleIds(item).includes(f.role))&&
+    matchesWorkStatus(item,f.status)&&
     (f.period==='all'||new Date(item.last_contributed_at).getTime()>=afterDays(f.period))&&
     (!f.query||`${item.title} ${item.repo} ${item.notes} ${item.evidence.map(e=>e.title).join(' ')}`.toLowerCase().includes(f.query.toLowerCase()))
   ).sort((a,b)=>new Date(f.sort==='mine'?b.last_contributed_at:b.updated_at)-new Date(f.sort==='mine'?a.last_contributed_at:a.updated_at));
@@ -18,8 +19,8 @@ function contributionRow(item){
   const reviews=item.evidence.filter(e=>e.type==='review').length;
   const evidence=[...item.evidence].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const notes=contributionView.drafts.has(item.id)?contributionView.drafts.get(item.id):item.notes;
-  return `<article class="contribution-card"><div class="contribution-heading"><div><div class="task-repo">${esc(item.repo)} · ${item.kind==='pr'?'PR #'+item.number:'Commit'}</div><a class="contribution-title" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">${esc(item.title)}</a></div><span class="small-badge ${contributionActive(item)?'review':'done'}">${esc(item.status)}</span></div>
-    <div class="contribution-badges">${item.roles.filter(role=>role!=='commenter'||contributionView.discussion).map(role=>`<span class="small-badge">${esc(contributionRoles[role]||role)}</span>`).join('')}<span class="muted-small">${[commits?`${commits} commit${commits===1?'':'s'}`:'',reviews?`${reviews} review${reviews===1?'':'s'}`:''].filter(Boolean).join(' · ')}</span></div>
+  return `<article class="contribution-card"><div class="contribution-heading"><div><div class="task-repo">${esc(item.repo)} · ${item.kind==='pr'?'PR #'+item.number:'Commit'}</div><a class="contribution-title" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">${esc(item.title)}</a></div><div class="status-badges">${contributionStatusBadges(item)}</div></div>
+    <div class="contribution-badges">${roleBadges(contributionRoleIds(item).filter(role=>role!=='commenter'||contributionView.discussion))}<span class="muted-small">${[commits?`${commits} commit${commits===1?'':'s'}`:'',reviews?`${reviews} review${reviews===1?'':'s'}`:''].filter(Boolean).join(' · ')}</span></div>
     <div class="contribution-dates"><span title="${esc(formatTime(item.last_contributed_at))}">Your last contribution: <strong>${relativeDate(item.last_contributed_at)}</strong></span><span title="${esc(formatTime(item.updated_at))}">Latest activity: <strong>${relativeDate(item.updated_at)}</strong></span></div>
     <div class="button-row"><a class="button button-quiet" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">Open ${item.kind==='pr'?'PR':'commit'} ↗</a>${item.kind==='pr'?`<button class="button button-outline" data-contribution-follow="${esc(item.id)}" aria-pressed="${item.followed}">${item.followed?'Following updates ✓':'Follow updates'}</button>`:''}</div>
     <details data-contribution-details="${esc(item.id)}" ${contributionView.expanded.has(item.id)?'open':''}><summary>Your contribution · ${evidence.length} record${evidence.length===1?'':'s'}${item.notes?' · Private notes':''}</summary>${!item.details_complete?'<p class="settings-note">Some details could not be checked. Previously verified evidence is retained until a complete sync.</p>':''}<ul class="contribution-evidence">${evidence.map(e=>`<li><a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">${esc(e.type==='commit'?e.sha.slice(0,7)+' · '+e.title:e.title)}</a><span>${e.historical?'Previously recorded · ':''}${esc(e.roles.map(role=>contributionRoles[role]||role).join(' / '))} · ${esc(formatTime(e.date))}</span></li>`).join('')}</ul><label class="contribution-notes">Private notes<textarea data-contribution-notes="${esc(item.id)}" maxlength="10000" rows="3" placeholder="Your context and next steps; saved only in Workdesk">${esc(notes)}</textarea></label><button class="button button-primary" data-contribution-save="${esc(item.id)}">Save notes</button></details></article>`;
@@ -36,6 +37,7 @@ function renderContributions(){
   $('contribution-active').setAttribute('aria-pressed',String(contributionView.tab==='active'));
   $('contribution-history').setAttribute('aria-pressed',String(contributionView.tab==='history'));
   if(state.view!=='contributions')return;
+  renderContributionFilters();
   const run=data.sync;
   $('contribution-sync-status').textContent=state.data.sync.running?'Syncing contribution evidence…':run?`Last checked ${formatTime(run.checked_at)} · ${run.repositories} repositories discovered`:'Select Sync GitHub to discover your contributions.';
   const errors=run?.errors||[], warnings=run?.warnings||[], summary=diagnosticSummary(errors,warnings);
@@ -59,10 +61,10 @@ async function updateContribution(id,changes){
   catch(e){toast(e.message,true)}
 }
 function bindContributions(){
-  for(const tab of ['active','history'])$('contribution-'+tab).onclick=()=>{contributionView.tab=tab;contributionView.limit=30;renderContributions()};
-  for(const [id,field] of [['contribution-repo','repo'],['contribution-role','role'],['contribution-period','period'],['contribution-sort','sort']])$(id).onchange=event=>{contributionView[field]=event.target.value;if(field==='role'&&event.target.value==='commenter'){contributionView.discussion=true;$('contribution-discussion').checked=true}contributionView.limit=30;renderContributions()};
-  $('contribution-search').oninput=event=>{contributionView.query=event.target.value;contributionView.limit=30;renderContributions()};
-  $('contribution-discussion').onchange=event=>{contributionView.discussion=event.target.checked;contributionView.limit=30;renderContributions()};
+  for(const tab of ['active','history'])$('contribution-'+tab).onclick=()=>{contributionView.tab=tab;const status=contributionView.status;if(status!=='any'&&((tab==='active')!==['open','draft'].includes(status)))contributionView.status='any';contributionView.limit=30;queueFilterSave();renderContributions()};
+  for(const [id,field] of [['contribution-repo','repo'],['contribution-role','role'],['contribution-status','status'],['contribution-period','period'],['contribution-sort','sort']])$(id).onchange=event=>{contributionView[field]=event.target.value;if(field==='status'&&event.target.value!=='any')contributionView.tab=['open','draft'].includes(event.target.value)?'active':'history';if(field==='role'&&event.target.value==='commenter'){contributionView.discussion=true;$('contribution-discussion').checked=true}contributionView.limit=30;queueFilterSave();renderContributions()};
+  $('contribution-search').oninput=event=>{contributionView.query=event.target.value;contributionView.limit=30;queueFilterSave();renderContributions()};
+  $('contribution-discussion').onchange=event=>{contributionView.discussion=event.target.checked;contributionView.limit=30;queueFilterSave();renderContributions()};
   $('contribution-more').onclick=()=>{contributionView.limit+=30;renderContributions()};
   $('contribution-settings').onclick=()=>switchView('settings');
   $('contributions-list').oninput=event=>{const id=event.target.dataset.contributionNotes;if(id)contributionView.drafts.set(id,event.target.value)};

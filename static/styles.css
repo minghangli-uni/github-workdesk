@@ -174,3 +174,51 @@ html[data-theme] :is(.nav-item,.button,.icon-button,.text-button,.row-action,sel
 .sync-banner-actions button:disabled{opacity:.5;cursor:wait}
 
 #local-save-controls .button-row{margin:16px 0 10px}#local-backup-status.backup-error{color:var(--amber)}
+
+/* Status colours stay semantic across themes; role chips remain quieter. */
+:root {
+  --status-green-bg:#17382b; --status-green-fg:#9af0bd;
+  --status-purple-bg:#33254d; --status-purple-fg:#e2c5ff;
+  --status-red-bg:#45242a; --status-red-fg:#ffb4b4;
+  --status-blue-bg:#1b3451; --status-blue-fg:#b3d9ff;
+  --status-grey-bg:#2c333e; --status-grey-fg:#d9e1eb;
+  --status-amber-bg:#42331b; --status-amber-fg:#ffe08b;
+}
+html[data-theme="github-light"] {
+  --status-green-bg:#dafbe1; --status-green-fg:#116329;
+  --status-purple-bg:#f0e7ff; --status-purple-fg:#6520a3;
+  --status-red-bg:#ffebe9; --status-red-fg:#a40e26;
+  --status-blue-bg:#ddf4ff; --status-blue-fg:#0550ae;
+  --status-grey-bg:#eaeef2; --status-grey-fg:#424a53;
+  --status-amber-bg:#fff1c2; --status-amber-fg:#744500;
+}
+.role-badges,.status-badges {display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:285px}
+.work-table td:nth-child(2),.work-table td:nth-child(3) {white-space:normal}
+html[data-theme] .small-badge.status-badge,
+html[data-theme] .small-badge.attention-badge,
+html[data-theme] .small-badge.role-requested {
+  background:var(--pill-bg,var(--status-grey-bg));color:var(--pill-fg,var(--status-grey-fg));
+  border:1px solid currentColor;display:inline-flex;align-items:center;gap:6px;
+  font-size:11px;line-height:1.45;padding:4px 8px;font-weight:700;white-space:normal;
+}
+.status-open,.status-done,.attention-approved {--pill-bg:var(--status-green-bg);--pill-fg:var(--status-green-fg)}
+.status-merged {--pill-bg:var(--status-purple-bg);--pill-fg:var(--status-purple-fg)}
+.status-closed,.status-blocked,.attention-changes {--pill-bg:var(--status-red-bg);--pill-fg:var(--status-red-fg)}
+.status-progress,.status-committed {--pill-bg:var(--status-blue-bg);--pill-fg:var(--status-blue-fg)}
+.attention-review,.role-requested {--pill-bg:var(--status-amber-bg);--pill-fg:var(--status-amber-fg)}
+html[data-theme] .small-badge.status-unknown {border-style:dashed}
+html[data-theme] .small-badge.role-badge {white-space:normal;line-height:1.45;padding:4px 8px;font-size:11px}
+.filter-tools {display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:0 22px 12px}
+#contributions-panel .filter-tools {padding:10px 0 0}
+.filter-save-status {font-size:11px;color:var(--sub)}
+.filters {flex-wrap:wrap}
+.filters .filter-search {flex:1 1 230px;min-width:180px}
+.filters .filter-select {flex:1 1 145px;min-width:140px;max-width:100%}
+.filters .filter-select select {max-width:100%;min-width:0}
+@media(max-width:700px) {
+  .filters .filter-select {flex:1 1 calc(50% - 12px);min-width:0}
+  .filters .filter-search {flex-basis:100%;min-width:0}
+  .filters .filter-select select {width:100%}
+  .role-badges,.status-badges {max-width:100%}
+  .filter-tools {padding-left:16px;padding-right:16px}
+}

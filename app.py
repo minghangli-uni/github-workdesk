@@ -33,6 +33,7 @@ import contributions
 import sync_diagnostics
 import local_backups
 import phone_access
+import view_filters
 
 APP_NAME = 'GitHub Workdesk'
 ROOT = Path(__file__).resolve().parent
@@ -152,6 +153,7 @@ def init_db():
             'lookback_days': 365,
             'theme': 'system',
             'theme_configured': False,
+            'view_filters': {},
         }.items():
             con.execute('INSERT OR IGNORE INTO settings (key,value) VALUES (?,?)', (key, json.dumps(value)))
 
@@ -757,7 +759,7 @@ class WorkdeskAPI:
                 return self.serve_static('app.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/styles.css':
                 return self.serve_static('styles.css', 'text/css; charset=utf-8')
-            mobile_assets = {'phone-access.js': 'text/javascript', 'mobile.js': 'text/javascript', 'mobile.css': 'text/css',
+            mobile_assets = {'work-items.js': 'text/javascript', 'view-filters.js': 'text/javascript', 'phone-access.js': 'text/javascript', 'mobile.js': 'text/javascript', 'mobile.css': 'text/css',
                              'icon-192.png': 'image/png', 'icon-512.png': 'image/png'}
             name = uri.path.removeprefix('/static/')
             if uri.path.startswith('/static/') and name in mobile_assets:
@@ -858,6 +860,9 @@ class WorkdeskAPI:
                 return self.send_json(save_manual(p), 201)
             if uri.path == '/api/settings':
                 with db_conn() as con:
+                    if 'view_filters' in p:
+                        saved = view_filters.validate_saved(p['view_filters'])
+                        con.execute("UPDATE settings SET value=? WHERE key='view_filters'", (json.dumps(saved),))
                     if 'theme' in p:
                         theme = p['theme']
                         if not isinstance(theme, str) or theme not in THEMES:

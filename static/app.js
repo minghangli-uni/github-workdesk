@@ -22,7 +22,7 @@ if (window.matchMedia) {
     if (selectedTheme === 'system') applyTheme('system', false);
   });
 }
-const state = {data:null, view:'overview', limit:30, filter:{period:'all',dateField:'updated_at',repo:'all',status:'any',query:'',from:'',to:''}, editing:null, poll:null};
+const state = {data:null, view:'overview', limit:30, filter:defaultTaskFilters('overview'), editing:null, poll:null};
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const short = (s,n=90) => String(s||'').length>n ? String(s).slice(0,n-1)+'…' : String(s||'');
@@ -43,7 +43,7 @@ async function request(path,opts={}){const r=await fetch(path,{...opts,headers:{
 function toast(message,error=false){const node=document.createElement('div');node.className='toast'+(error?' error':'');node.textContent=message;$('toast-stack').appendChild(node);setTimeout(()=>node.remove(),4700)}
 function banner(html,tone='warning'){$('banner').innerHTML=html;$('banner').className='banner banner-'+tone}
 function clearBanner(){$('banner').classList.add('hidden')}
-async function refresh(silent=false){try{state.data=await request('/api/dashboard');await restoreAppearance(state.data);render();if(!silent&&!state.data.sync.running)toast('Workspace refreshed');}catch(e){banner(`<strong>Cannot load your workspace.</strong> ${esc(e.message)}`)}}
+async function refresh(silent=false){try{state.data=await request('/api/dashboard');await restoreAppearance(state.data);restoreViewFilters(state.data);indexWork(state.data);render();if(!silent&&!state.data.sync.running)toast('Workspace refreshed');}catch(e){banner(`<strong>Cannot load your workspace.</strong> ${esc(e.message)}`)}}
 
 function render(){if(!state.data)return;const data=state.data, c=counts();
   $('stat-reviews').textContent=c.reviews;$('stat-prs').textContent=c.prs;$('stat-issues').textContent=c.issues;$('stat-manual').textContent=c.manual;$('stat-completed').textContent=c.completed;
@@ -83,10 +83,8 @@ function filteredTasks(){const f=state.filter;return mainItems().filter(t=>{
   if(state.view==='issues' && !(t.kind==='issue'&&(t.role_assigned||t.role_author)))return false;
   if(state.view==='tasks' && t.source!=='manual')return false;
   if(state.view==='completed' && !finished)return false;
-  if(state.view==='overview' && (finished||isSnoozed(t)))return false;
-  if(f.status==='open'&&finished)return false;
-  if(f.status==='done'&&!finished)return false;
-  if(f.status==='snoozed'&&!isSnoozed(t))return false;
+  if(!matchesWorkStatus(t,f.status,finished,isSnoozed(t)))return false;
+  if(f.role!=='all'&&!taskRoles(t).includes(f.role))return false;
   if(f.query&&!`${t.title} ${t.repo} ${t.notes} ${t.description} ${t.labels.join(' ')}`.toLowerCase().includes(f.query.toLowerCase()))return false;
   const dt=t[f.dateField];
   if(f.period!=='all'){
@@ -102,27 +100,18 @@ function filteredTasks(){const f=state.filter;return mainItems().filter(t=>{
   const rank=t=>{if(isSnoozed(t))return 7;if(t.role_review)return 0;if(t.due_date&&t.due_date<dateToday())return 1;if(t.local_status==='blocked')return 2;if(t.priority===1)return 3;if(t.role_author)return 4;return 5};
   return rank(a)-rank(b)||(a.due_date||'9999').localeCompare(b.due_date||'9999')||new Date(b.updated_at)-new Date(a.updated_at);
 });}
-function taskBadge(t){if(t.source==='manual')return `<span class="small-badge ${t.local_status==='done'?'done':t.local_status==='blocked'?'blocked':'local'}">${esc({todo:'To do',in_progress:'In progress',blocked:'Blocked',done:'Done'}[t.local_status]||t.local_status)}</span>`;
-  if(t.github_state==='merged')return '<span class="small-badge done">Merged</span>';
-  if(t.github_state==='closed')return '<span class="small-badge done">Closed</span>';
-  if(t.github_state==='closed_unknown')return '<span class="small-badge draft">Closed · unverified</span>';
-  if(t.role_review)return '<span class="small-badge review">Review needed</span>';
-  if(t.local_status==='unassigned'&&!t.role_review&&!t.role_author&&!t.role_assigned)return '<span class="small-badge local">No longer assigned</span>';
-  if(t.was_review_requested&&!t.role_review&&!t.role_author&&!t.role_assigned)return '<span class="small-badge done">Review no longer requested</span>';
-  if(t.is_draft)return '<span class="small-badge draft">Draft</span>';
-  return '<span class="small-badge">Open</span>';
-}
-function taskRole(t){if(t.source==='manual')return '<span class="small-badge local">Personal</span>';let roles=[];if(t.role_review)roles.push('Reviewer');if(t.role_author)roles.push('Author');if(t.role_assigned)roles.push('Assignee');if(!roles.length&&t.was_review_requested)roles.push('Past reviewer');return `<span class="small-badge ${t.role_review?'review':''}">${esc(roles.join(' / ')||'GitHub')}</span>`}
+function taskBadge(t){return taskStatusBadges(t)}
+function taskRole(t){return `<div class="role-badges">${roleBadges(taskRoles(t))}</div>`}
 function taskNumber(t){const m=t.url.match(/\/(?:pull|issues)\/(\d+)$/);return m?'#'+m[1]:''}
 function getTask(id){return state.data.tasks.find(t=>t.id===id)}
 function taskRow(t){const main=esc(short(t.title,135));const url=t.url&&/^https?:\/\//.test(t.url)?esc(t.url):'';const title=url?`<a class="task-title task-link" href="${url}" target="_blank" rel="noopener noreferrer" title="Open GitHub">${main}</a>`:`<span class="task-title">${main}</span>`;
   const due=t.due_date?`<div class="due-inline ${t.due_date<dateToday()&&!isFinished(t)?'overdue':''}">${t.due_date<dateToday()&&!isFinished(t)?'Overdue':'Due'} ${esc(t.due_date)}</div>`:'';
   const note=t.notes?' <span title="Has private notes">✎</span>':'';
-  return `<tr data-id="${esc(t.id)}"><td>${title}<div class="task-repo"><span class="repo-box">${t.source==='manual'?'TASK':t.kind==='pr'?'PR':'ISSUE'}</span><span>${esc(t.repo||'Personal workspace')} ${esc(taskNumber(t))}</span>${note}</div>${due}</td><td>${taskRole(t)}</td><td>${taskBadge(t)}${isSnoozed(t)?' <span class="small-badge snoozed">Snoozed</span>':''}</td><td><span class="priority"><span class="priority-dot ${t.priority===1?'high':t.priority===3?'low':''}"></span>${priorityText(t.priority)}</span></td><td title="${esc(formatTime(t.updated_at))}">${relativeDate(t.updated_at)}</td><td><div class="row-actions"><button class="row-action" data-edit="${esc(t.id)}">Details</button>${t.source==='manual'&&!isFinished(t)?`<button class="row-action" data-complete="${esc(t.id)}">Done ✓</button>`:''}${t.role_review&&!isFinished(t)?`<button class="row-action" data-snooze="${esc(t.id)}">${isSnoozed(t)?'Unsnooze':'Snooze'}</button>`:''}</div></td></tr>`}
-function renderTable(){if(['history','settings','notifications','contributions'].includes(state.view))return;const t=filteredTasks(),count=t.length;const titles={overview:['YOUR WORK QUEUE','Outstanding work'],reviews:['CODE REVIEW','Requested reviews'],prs:['PR TRACKER','Your pull requests'],issues:['ISSUE TRACKER','Issues'],tasks:['YOUR TO-DOS','Personal tasks'],completed:['ARCHIVE','Completed / closed work']};$('table-eyebrow').textContent=titles[state.view][0];$('table-heading').firstChild.textContent=titles[state.view][1]+' ';$('result-count').textContent=count;
+  return `<tr data-id="${esc(t.id)}"><td>${title}<div class="task-repo"><span class="repo-box">${t.source==='manual'?'TASK':t.kind==='pr'?'PR':'ISSUE'}</span><span>${esc(t.repo||'Personal workspace')} ${esc(taskNumber(t))}</span>${note}</div>${due}</td><td>${taskRole(t)}</td><td><div class="status-badges">${taskBadge(t)}${isSnoozed(t)?attentionBadge('Snoozed'):''}</div></td><td><span class="priority"><span class="priority-dot ${t.priority===1?'high':t.priority===3?'low':''}"></span>${priorityText(t.priority)}</span></td><td title="${esc(formatTime(t.updated_at))}">${relativeDate(t.updated_at)}</td><td><div class="row-actions"><button class="row-action" data-edit="${esc(t.id)}">Details</button>${t.source==='manual'&&!isFinished(t)?`<button class="row-action" data-complete="${esc(t.id)}">Done ✓</button>`:''}${t.role_review&&!isFinished(t)?`<button class="row-action" data-snooze="${esc(t.id)}">${isSnoozed(t)?'Unsnooze':'Snooze'}</button>`:''}</div></td></tr>`}
+function renderTable(){if(['history','settings','notifications','contributions'].includes(state.view))return;renderTableFilters();const t=filteredTasks(),count=t.length;const titles={overview:['YOUR WORK QUEUE',state.filter.status==='outstanding'?'Outstanding work':'Your work'],reviews:['CODE REVIEW','Requested reviews'],prs:['PR TRACKER','Your pull requests'],issues:['ISSUE TRACKER','Issues'],tasks:['YOUR TO-DOS','Personal tasks'],completed:['ARCHIVE','Completed / closed work']};$('table-eyebrow').textContent=titles[state.view][0];$('table-heading').firstChild.textContent=titles[state.view][1]+' ';$('result-count').textContent=count;
   $('tasks-body').innerHTML=t.slice(0,state.limit).map(taskRow).join('');$('empty-state').classList.toggle('hidden',count!==0);$('table-footer').textContent=`Showing ${Math.min(count,state.limit)} of ${count} matching items`;
   $('show-more-btn').classList.toggle('hidden',count<=state.limit);
-  $('empty-title').textContent=state.data.tasks.length?'No tasks match your filters':'Nothing here yet';$('empty-message').textContent=state.data.tasks.length?'Try another date, repository or status filter.':'Sync GitHub or create a personal task to get started.';
+  $('empty-title').textContent=state.data.tasks.length?'No tasks match your filters':'Nothing here yet';$('empty-message').textContent=state.data.tasks.length?'Try another role, status, repository or date, or reset these filters.':'Sync GitHub or create a personal task to get started.';
   document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openTask(getTask(b.dataset.edit)));
   document.querySelectorAll('[data-complete]').forEach(b=>b.onclick=()=>patchTask(b.dataset.complete,{local_status:'done'},'Task completed'));
   document.querySelectorAll('[data-snooze]').forEach(b=>b.onclick=()=>{const t=getTask(b.dataset.snooze);const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);patchTask(t.id,{snoozed_until:isSnoozed(t)?null:localDate(tomorrow)},isSnoozed(t)?'Review unsnoozed':'Review snoozed until tomorrow')});
@@ -153,7 +142,7 @@ $('settings-username').value=data.settings.github_username;$('settings-orgs').va
   $('database-path').textContent=data.data_dir+'/workdesk.sqlite3';$('theme-select').value=selectedTheme;$('auth-hint').textContent='GitHub account: '+(data.settings.github_username || (data.settings.last_synced_user ? data.settings.last_synced_user+' (auto-detected)' : 'auto-detect on sync'))+' · If authentication fails, run “gh auth login” in Terminal.';
   renderLocalData(data);renderMobile();renderPhoneAccess();
 }
-function switchView(view){state.view=view;state.limit=30;render();window.scrollTo({top:0,behavior:'smooth'})}
+function switchView(view){selectViewFilters(view);state.view=view;state.limit=30;render();window.scrollTo({top:0,behavior:'smooth'})}
 
 function openTask(task=null){state.editing=task;const isGh=!!task&&task.source==='github';$('task-id').value=task?.id||'';$('modal-title').textContent=!task?'Create a new task':isGh?'Edit tracking details':'Edit personal task';$('modal-eyebrow').textContent=isGh?'GITHUB ITEM · PRIVATE ANNOTATIONS':'PERSONAL TASK';
   $('task-title').value=task?.title||'';$('task-description').value=task?.description||'';$('task-status').value=task?.local_status||'todo';$('task-priority').value=task?.priority||2;$('task-due').value=task?.due_date||'';$('task-repo').value=task?.repo||'';$('task-url').value=task?.url||'';$('task-notes').value=task?.notes||'';
@@ -223,16 +212,17 @@ async function notificationWatcher(action){
   catch(e){toast(e.message,true)}
 }
 
-function bind(){bindPhoneAccess();bindLocalData();bindMobile();bindContributions();document.querySelectorAll('.nav-item[data-view]').forEach(e=>e.onclick=()=>switchView(e.dataset.view));document.querySelectorAll('[data-jump]').forEach(e=>e.onclick=()=>switchView(e.dataset.jump));$('sync-btn').onclick=startSync;$('refresh-btn').onclick=()=>refresh();$('new-task-btn').onclick=()=>openTask();$('empty-new').onclick=()=>openTask();$('show-reviews').onclick=()=>switchView('reviews');$('show-more-btn').onclick=()=>{state.limit+=30;renderTable()};$('export-csv').onclick=()=>{window.location.href='/api/export.csv'};
+function bind(){bindViewFilters();bindPhoneAccess();bindLocalData();bindMobile();bindContributions();document.querySelectorAll('.nav-item[data-view]').forEach(e=>e.onclick=()=>switchView(e.dataset.view));document.querySelectorAll('[data-jump]').forEach(e=>e.onclick=()=>switchView(e.dataset.jump));$('sync-btn').onclick=startSync;$('refresh-btn').onclick=()=>refresh();$('new-task-btn').onclick=()=>openTask();$('empty-new').onclick=()=>openTask();$('show-reviews').onclick=()=>switchView('reviews');$('show-more-btn').onclick=()=>{state.limit+=30;renderTable()};$('export-csv').onclick=()=>{window.location.href='/api/export.csv'};
   $('modal-close').onclick=closeTask;$('task-cancel').onclick=closeTask;$('modal-backdrop').onclick=e=>{if(e.target===$('modal-backdrop'))closeTask()};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('modal-backdrop').classList.contains('hidden'))closeTask()});$('task-form').onsubmit=submitTask;
   $('task-delete').onclick=async()=>{const task=state.editing;if(!task||task.source!=='manual')return;if(!confirm('Delete this manual task? This cannot be undone.'))return;try{await request('/api/tasks/'+encodeURIComponent(task.id),{method:'DELETE',body:'{}'});closeTask();await refresh(true);toast('Task deleted')}catch(err){toast(err.message,true)}};
-  $('search-input').oninput=e=>{state.filter.query=e.target.value;state.limit=30;renderTable()};
-  $('period-select').onchange=e=>{state.filter.period=e.target.value;$('custom-dates').classList.toggle('hidden',e.target.value!=='custom');state.limit=30;renderTable()};
-  $('date-field').onchange=e=>{state.filter.dateField=e.target.value;renderTable()};
-  $('repo-select').onchange=e=>{state.filter.repo=e.target.value;state.limit=30;render()};
-  $('status-select').onchange=e=>{state.filter.status=e.target.value;state.limit=30;renderTable()};
-  $('date-from').onchange=e=>{state.filter.from=e.target.value;renderTable()};
-  $('date-to').onchange=e=>{state.filter.to=e.target.value;renderTable()};
+  $('search-input').oninput=e=>{state.filter.query=e.target.value;state.limit=30;queueFilterSave();renderTable()};
+  $('period-select').onchange=e=>{state.filter.period=e.target.value;queueFilterSave();$('custom-dates').classList.toggle('hidden',e.target.value!=='custom');state.limit=30;renderTable()};
+  $('date-field').onchange=e=>{state.filter.dateField=e.target.value;queueFilterSave();renderTable()};
+  $('repo-select').onchange=e=>{state.filter.repo=e.target.value;queueFilterSave();state.limit=30;render()};
+  $('role-select').onchange=e=>{state.filter.role=e.target.value;state.limit=30;queueFilterSave();renderTable()};
+  $('status-select').onchange=e=>{state.filter.status=e.target.value;queueFilterSave();state.limit=30;renderTable()};
+  $('date-from').onchange=e=>{state.filter.from=e.target.value;queueFilterSave();renderTable()};
+  $('date-to').onchange=e=>{state.filter.to=e.target.value;queueFilterSave();renderTable()};
   $('notification-bell').onclick=()=>switchView('notifications');
   $('notifications-read-all').onclick=()=>markNotificationsRead(notificationData?.items.filter(n=>n.unread)||[]);
   $('notification-settings-form').onsubmit=saveNotificationSettings;

@@ -9,6 +9,7 @@ const source=fs.readFileSync(path.join(root,'static/contributions.js'),'utf8');
 function context(items){
   const sandbox={state:{data:{contributions:{items}}},esc:v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),relativeDate:v=>v,formatTime:v=>v,afterDays:days=>Date.parse('2026-11-10T00:00:00Z')-days*86400000};
   vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(root,'static/work-items.js'),'utf8'),sandbox);
   vm.runInContext(source+'\nthis.api={contributionView,filteredContributions,contributionRow};',sandbox);
   return sandbox.api;
 }
