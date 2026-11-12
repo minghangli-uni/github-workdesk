@@ -78,6 +78,8 @@ SOURCE_FILES=(
   contributions.py
   sync_diagnostics.py
   local_backups.py
+  phone_access.py
+  PHONE_ACCESS.md
   cloud.py
   cloud_identity.py
   cloud_push.py
@@ -92,6 +94,7 @@ SOURCE_FILES=(
   static/sync-status.js
   static/mobile.js
   static/local-data.js
+  static/phone-access.js
   static/mobile.css
   static/login.html
   static/offline.html
@@ -109,6 +112,8 @@ SOURCE_FILES=(
   tests/test_sync_status_ui.js
   tests/test_mobile_ui.js
   tests/test_local_backups.py
+  tests/test_phone_access.py
+  tests/test_phone_access_ui.js
   tests/test_local_data_ui.js
   docs/dashboard-demo.png
 )

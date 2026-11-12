@@ -1,13 +1,17 @@
 'use strict';
 // Cache only the generic offline message. No API responses, credentials, or work records.
-const OFFLINE_CACHE = 'workdesk-offline-v1';
+const OFFLINE_CACHE = 'workdesk-offline-v2';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(OFFLINE_CACHE).then(cache => cache.add('/static/offline.html')).then(() => self.skipWaiting()));
 });
-self.addEventListener('activate', event => { event.waitUntil(self.clients.claim()); });
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('workdesk-offline-') && key !== OFFLINE_CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+});
 self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate' && new URL(event.request.url).origin === self.location.origin) {
-    event.respondWith(fetch(event.request).catch(() => caches.match('/static/offline.html')));
+    event.respondWith(fetch(event.request).then(response => response.status >= 500
+      ? caches.match('/static/offline.html').then(page => page || response) : response)
+      .catch(() => caches.match('/static/offline.html')));
   }
 });
 self.addEventListener('push', event => {

@@ -32,3 +32,13 @@ are opt-in per device and signing out removes that session's subscriptions.
 Run one container/process behind an HTTPS proxy, with persistent storage. This
 implementation is for one owner's devices, not shared multi-user SaaS. No offline
 work cache is maintained. See [HOSTING.md](HOSTING.md) for operation and recovery.
+
+## Optional private phone access
+
+Phone access uses a separate loopback-only gateway behind Tailscale Serve. It
+accepts only the setup account's verified Tailscale identity header and exact
+private hostname. Writes require same-origin HTTPS requests with JSON bodies.
+Connection controls and Mac OS integration endpoints are inaccessible through
+this gateway. It does not enable Funnel, expose the ordinary local endpoint, or
+store GitHub credentials in the access configuration. See [PHONE_ACCESS.md](PHONE_ACCESS.md)
+for the local-process trust boundary and device requirements.

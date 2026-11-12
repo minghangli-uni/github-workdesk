@@ -24,3 +24,8 @@
   .modal{width:calc(100vw - 20px);max-height:calc(100dvh - 24px);overflow-y:auto}.form-grid{grid-template-columns:1fr}.modal-actions .button{min-height:44px}
   .contribution-card{overflow-wrap:anywhere}.button,.nav-item,.row-action{touch-action:manipulation}
 }
+
+.phone-steps {padding-left: 1.3rem; line-height: 1.65;}
+.phone-steps li {margin-bottom: .65rem;}
+#private-phone-address {width: 100%; min-width: 0; font-size: .85rem;}
+#private-phone-status {overflow-wrap: anywhere;}

@@ -32,6 +32,7 @@ import notifications
 import contributions
 import sync_diagnostics
 import local_backups
+import phone_access
 
 APP_NAME = 'GitHub Workdesk'
 ROOT = Path(__file__).resolve().parent
@@ -756,7 +757,7 @@ class WorkdeskAPI:
                 return self.serve_static('app.js', 'text/javascript; charset=utf-8')
             if uri.path == '/static/styles.css':
                 return self.serve_static('styles.css', 'text/css; charset=utf-8')
-            mobile_assets = {'mobile.js': 'text/javascript', 'mobile.css': 'text/css',
+            mobile_assets = {'phone-access.js': 'text/javascript', 'mobile.js': 'text/javascript', 'mobile.css': 'text/css',
                              'icon-192.png': 'image/png', 'icon-512.png': 'image/png'}
             name = uri.path.removeprefix('/static/')
             if uri.path.startswith('/static/') and name in mobile_assets:
@@ -936,6 +937,26 @@ class Handler(WorkdeskAPI, BaseHTTPRequestHandler):
     """Local HTTP transport. Hosted mode supplies its own authenticated transport."""
     local_storage = True
 
+    def do_GET(self):
+        if urlparse(self.path).path == '/api/phone-access':
+            if not self.allowed_host():
+                return self.send_json({'error': 'Only localhost requests are accepted'}, 403)
+            return self.send_json(PHONE_ACCESS.info())
+        return super().do_GET()
+
+    def do_POST(self):
+        if urlparse(self.path).path == '/api/phone-access':
+            if not self.allowed_host():
+                return self.send_json({'error': 'Only localhost requests are accepted'}, 403)
+            try:
+                return self.send_json(PHONE_ACCESS.change(self.read_payload().get('action')))
+            except Exception as exc:
+                return self.handle_error(exc)
+        return super().do_POST()
+
+
+PHONE_ACCESS = phone_access.Access(default_data_dir, WorkdeskAPI)
+
 
 def main():
     ap = argparse.ArgumentParser(description=APP_NAME)
@@ -988,6 +1009,7 @@ def main():
     if not 1024 <= args.port <= 65535:
         ap.error('--port must be between 1024 and 65535')
     httpd = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
+    PHONE_ACCESS.start()
     url = f'http://127.0.0.1:{args.port}'
     print(f'\n  GitHub Workdesk  {url}\n  Database: {default_data_dir() / "workdesk.sqlite3"}\n  Ctrl+C to stop\n', flush=True)
     threading.Thread(target=NOTIFICATIONS.run, daemon=True).start()
@@ -1000,6 +1022,7 @@ def main():
         pass
     finally:
         NOTIFICATIONS.stop.set()
+        PHONE_ACCESS.close()
         httpd.server_close()
     return 0
 

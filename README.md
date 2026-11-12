@@ -4,6 +4,17 @@
 
 ![GitHub Workdesk demo with fictional data](docs/dashboard-demo.png)
 
+## Install on Mac or iPhone
+
+On Mac, start `start.command`, open `http://127.0.0.1:8765` in Safari and use
+**File → Add to Dock** (macOS Sonoma or later). Keep Workdesk running.
+
+For iPhone, open **Settings → Connect to your Mac** in Workdesk. Set up Tailscale
+on both devices, enable private access, and open the displayed HTTPS address in
+Safari → **Share → Add to Home Screen**. The Mac must stay awake and connected;
+all saved work stays on your Mac. [Setup and troubleshooting](PHONE_ACCESS.md).
+Closed-app iPhone push alerts are not enabled by this connection.
+
 ## What it does
 
 - **PR tracking:** authored open and draft PRs, and recently closed or merged PRs.

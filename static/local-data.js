@@ -34,7 +34,7 @@ async function saveAppearance(theme) {
     state.data.settings.theme = theme;
     state.data.settings.theme_configured = true;
     appearanceLoaded = true;
-    toast(state.data.hosted ? 'Appearance saved in Workdesk.' : 'Appearance saved on this computer.');
+    toast(state.data.hosted ? 'Appearance saved in Workdesk.' : (state.data.phone_access?.remote ? 'Appearance saved on your Mac.' : 'Appearance saved on this computer.'));
   } catch (error) {
     applyTheme(previous);
     toast('Appearance could not be saved: ' + error.message, true);
@@ -46,14 +46,17 @@ async function saveAppearance(theme) {
 
 function renderLocalData(data) {
   const local = !data.hosted;
+  const remote = !!data.phone_access?.remote;
+  $('local-folder-button').classList.toggle('hidden', remote);
   $('local-save-controls').classList.toggle('hidden', !local);
   if (!local) return;
-  $('backup-heading').textContent = data.platform === 'darwin' ? 'Saved on this Mac' : 'Saved on this computer';
+  $('backup-heading').textContent = remote ? 'Saved on your Mac' : data.platform === 'darwin' ? 'Saved on this Mac' : 'Saved on this computer';
   $('backup-description').textContent = 'Tasks, notes, synced GitHub records, contribution evidence, notification history and settings are saved here. Each successful Save or sync writes to your database. You can close and reopen Workdesk without losing saved work.';
-  $('sidebar-storage-note').textContent = 'Saved on this computer. No hosting subscription is needed. GitHub is read-only.';
-  $('local-backup-button').textContent = data.platform === 'darwin' ? 'Save backup on this Mac' : 'Save backup on this computer';
+  $('sidebar-storage-note').textContent = remote ? 'Saved on your Mac through your private connection. GitHub is read-only.' : 'Saved on this computer. No hosting subscription is needed. GitHub is read-only.';
+  $('local-backup-button').textContent = remote ? 'Save backup on your Mac' : data.platform === 'darwin' ? 'Save backup on this Mac' : 'Save backup on this computer';
   $('local-backup-button').disabled = localBackupSaving;
   $('theme-select').disabled = appearanceSaving;
+  if (remote) $('backup-description').textContent = 'Each successful Save or sync updates the same database on your Mac. Automatic and manual backups stay on your Mac. The download buttons below save an extra copy on this device.';
   const storage = data.storage;
   if (!storage) return;
   $('database-path').textContent = storage.database_path;
@@ -74,7 +77,7 @@ async function saveLocalBackup() {
     const result = await request('/api/local-backup', {method: 'POST', body: '{}'});
     state.data.storage = result.storage;
     renderLocalData(state.data);
-    toast('Complete backup saved on this computer.');
+    toast(state.data.phone_access?.remote ? 'Complete backup saved on your Mac.' : 'Complete backup saved on this computer.');
   } catch (error) {
     toast('Backup could not be saved: ' + error.message, true);
   } finally {

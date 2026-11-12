@@ -151,7 +151,7 @@ $('settings-username').value=data.settings.github_username;$('settings-orgs').va
   $('reminder-time').value=data.reminder.time;$('reminder-status').textContent=data.reminder.installed?'Enabled: every day at '+data.reminder.time+' (local time)':'Not enabled. The webpage still supports manual sync.';
   $('reminder-install').disabled=data.platform!=='darwin';$('reminder-remove').disabled=data.platform!=='darwin'||!data.reminder.installed;
   $('database-path').textContent=data.data_dir+'/workdesk.sqlite3';$('theme-select').value=selectedTheme;$('auth-hint').textContent='GitHub account: '+(data.settings.github_username || (data.settings.last_synced_user ? data.settings.last_synced_user+' (auto-detected)' : 'auto-detect on sync'))+' · If authentication fails, run “gh auth login” in Terminal.';
-  renderLocalData(data);renderMobile();
+  renderLocalData(data);renderMobile();renderPhoneAccess();
 }
 function switchView(view){state.view=view;state.limit=30;render();window.scrollTo({top:0,behavior:'smooth'})}
 
@@ -194,7 +194,7 @@ async function refreshNotifications(){
     notificationData=next;renderNotifications();
     if(next.enabled&&fresh.length){
       toast(`${fresh.length} new GitHub update${fresh.length===1?'':'s'}: ${short(fresh[0].title,100)}`);
-      if(!state.data?.hosted&&next.desktop&&state.data?.platform!=='darwin'&&'Notification' in window&&Notification.permission==='granted'){
+      if(!state.data?.hosted&&!state.data?.phone_access?.remote&&next.desktop&&state.data?.platform!=='darwin'&&'Notification' in window&&Notification.permission==='granted'){
         try {
           const alert=new Notification('GitHub Workdesk',{body:fresh.length===1?`${fresh[0].repo}: ${fresh[0].title}`:`${fresh.length} new updates in your notification inbox.`,tag:'workdesk-'+next.latest});
           alert.onclick=()=>{window.focus();switchView('notifications');alert.close()};
@@ -223,7 +223,7 @@ async function notificationWatcher(action){
   catch(e){toast(e.message,true)}
 }
 
-function bind(){bindLocalData();bindMobile();bindContributions();document.querySelectorAll('.nav-item[data-view]').forEach(e=>e.onclick=()=>switchView(e.dataset.view));document.querySelectorAll('[data-jump]').forEach(e=>e.onclick=()=>switchView(e.dataset.jump));$('sync-btn').onclick=startSync;$('refresh-btn').onclick=()=>refresh();$('new-task-btn').onclick=()=>openTask();$('empty-new').onclick=()=>openTask();$('show-reviews').onclick=()=>switchView('reviews');$('show-more-btn').onclick=()=>{state.limit+=30;renderTable()};$('export-csv').onclick=()=>{window.location.href='/api/export.csv'};
+function bind(){bindPhoneAccess();bindLocalData();bindMobile();bindContributions();document.querySelectorAll('.nav-item[data-view]').forEach(e=>e.onclick=()=>switchView(e.dataset.view));document.querySelectorAll('[data-jump]').forEach(e=>e.onclick=()=>switchView(e.dataset.jump));$('sync-btn').onclick=startSync;$('refresh-btn').onclick=()=>refresh();$('new-task-btn').onclick=()=>openTask();$('empty-new').onclick=()=>openTask();$('show-reviews').onclick=()=>switchView('reviews');$('show-more-btn').onclick=()=>{state.limit+=30;renderTable()};$('export-csv').onclick=()=>{window.location.href='/api/export.csv'};
   $('modal-close').onclick=closeTask;$('task-cancel').onclick=closeTask;$('modal-backdrop').onclick=e=>{if(e.target===$('modal-backdrop'))closeTask()};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('modal-backdrop').classList.contains('hidden'))closeTask()});$('task-form').onsubmit=submitTask;
   $('task-delete').onclick=async()=>{const task=state.editing;if(!task||task.source!=='manual')return;if(!confirm('Delete this manual task? This cannot be undone.'))return;try{await request('/api/tasks/'+encodeURIComponent(task.id),{method:'DELETE',body:'{}'});closeTask();await refresh(true);toast('Task deleted')}catch(err){toast(err.message,true)}};
   $('search-input').oninput=e=>{state.filter.query=e.target.value;state.limit=30;renderTable()};
